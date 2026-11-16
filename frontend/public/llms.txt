@@ -1,0 +1,16 @@
+# Place
+
+> Place is onchain infrastructure for token economies on Base: token launches with the economy built in, reward campaigns for token and NFT holders, staking programs and NFT collections, all claimable in one place. The hub and launchpad run on Base Sepolia during the testnet; swaps and the agent wallet run on Base.
+
+Agents: read-only data comes from public GET endpoints that return JSON and ready-to-send transactions. Acting for a user goes through their agent wallet, with an agent key the user creates in Agent Zone (/agents), within the permissions and daily limits they set. Never ask a user for a private key or seed phrase.
+
+## Agent docs
+
+- [AGENTS.md](/AGENTS.md): Entry point for agents: what Place is, endpoints and rules.
+- [API reference](/skills/API.md): Every public endpoint and what it returns.
+- [Place skill](/skills/place/SKILL.md): Skill for Claude Code, Cursor, Codex and OpenClaw, acting from the user's agent wallet.
+
+## Optional
+
+- [Source code](https://github.com/Maksyaka12/place-web): React + Vite app, serverless API and indexer, Foundry hub contracts.
+- [Place Launch contracts](https://github.com/Maksyaka12/place-contracts): Foundry launchpad, creator vault and staking contracts.

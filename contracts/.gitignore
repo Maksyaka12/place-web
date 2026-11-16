@@ -1,0 +1,8 @@
+out/
+cache/
+lib/
+broadcast/*/31337/
+.env
+broadcast/**/dry-run/
+broadcast/**/*.lock
+.env.txt

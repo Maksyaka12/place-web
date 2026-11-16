@@ -1,0 +1,38 @@
+# .gitignore
+
+# Секрети — НІКОЛИ не пушити
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+dist/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Local tool settings
+.claude/
+
+# Promo videos and local materials, kept on this machine only
+promo/
+/video/
+/skills/
+frontend/public/dexscreener-banner.png
+
+# Local dev store for /api/schedule
+frontend/.data/
+
+# Local Place Launch live checks (scripts/launchLive.mjs)
+frontend/.launch-live/
+frontend/launch-live.json
+
+# Internal strategy, plans and specs: local only, never pushed
+/strategy/

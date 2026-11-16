@@ -1,0 +1,304 @@
+/* ── Swap page styles ── */
+
+.pl-swap-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pl-swap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.pl-swap-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.pl-swap-slippage-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pl-swap-slippage-label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-right: 2px;
+}
+
+.pl-swap-slippage-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.pl-swap-slippage-btn:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.pl-swap-slippage-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+.pl-swap-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--ease-fast);
+}
+
+.pl-swap-box:focus-within {
+  border-color: var(--border-hover);
+}
+
+.pl-swap-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pl-swap-box-balance {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-swap-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pl-swap-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-swap-input::placeholder {
+  color: var(--text-3);
+  opacity: 0.5;
+}
+
+.pl-swap-token-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.pl-swap-token-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.pl-swap-box-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pl-swap-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.pl-swap-preset-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.pl-swap-preset-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.pl-swap-reverse-wrap {
+  display: flex;
+  justify-content: center;
+  margin: -6px 0;
+  position: relative;
+  z-index: 2;
+}
+
+.pl-swap-reverse-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+}
+
+.pl-swap-reverse-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.pl-swap-route-details {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pl-swap-route-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Token picker: the pill opens a list of tokens plus a field for any token address */
+.pl-swap-token-btn {
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pl-swap-token-btn:hover,
+.pl-swap-token-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+.pl-swap-token-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pl-swap-token-menu {
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  /* stays above the bottom bar on phones */
+  max-height: min(360px, 40vh);
+  overflow-y: auto;
+}
+
+.pl-swap-token-add {
+  display: flex;
+  gap: 6px;
+  padding: 2px 2px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pl-swap-token-address {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.pl-swap-token-address:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pl-swap-token-error {
+  padding: 4px 6px 2px;
+  font-size: 12px;
+  color: var(--red);
+}
+
+.pl-swap-status {
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.pl-swap-status.is-success {
+  background: var(--green-bg);
+  border-color: var(--green-bd);
+  color: var(--green);
+}
+
+.pl-swap-status.is-error {
+  background: var(--red-bg);
+  border-color: var(--red-bd);
+  color: var(--red);
+}
+
+.pl-swap-status a {
+  color: var(--accent);
+  text-decoration: underline;
+  flex-shrink: 0;
+}
