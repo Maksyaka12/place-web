@@ -1,9 +1,7 @@
-# .gitignore
-
-# Секрети — НІКОЛИ не пушити
+# Secrets: never commit; .env.example lists the variables with empty values
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # Node
 node_modules/
@@ -14,25 +12,18 @@ dist/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE and local tool settings
 .vscode/
 .idea/
-
-# Local tool settings
 .claude/
 
-# Promo videos and local materials, kept on this machine only
+# Local-only materials
 promo/
 /video/
 /skills/
-frontend/public/dexscreener-banner.png
+/strategy/
 
-# Local dev store for /api/schedule
+# Local dev data: agent store without Redis (api/_lib/common.js), launch live checks (scripts/launchLive.mjs)
 frontend/.data/
-
-# Local Place Launch live checks (scripts/launchLive.mjs)
 frontend/.launch-live/
 frontend/launch-live.json
-
-# Internal strategy, plans and specs: local only, never pushed
-/strategy/
