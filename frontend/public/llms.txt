@@ -1,14 +1,17 @@
 # Place
 
-> Place is onchain infrastructure for token economies on Base: token launches with the economy built in, reward campaigns for token and NFT holders, staking programs and NFT collections, all claimable in one place. The hub and launchpad run on Base Sepolia during the testnet; swaps and the agent wallet run on Base.
+> Place is onchain infrastructure for token economies on Base: token launches with the economy built in, reward campaigns for token and NFT holders, staking programs and NFT collections, all claimable in one place. The hub and launchpad run on Base Sepolia during the testnet.
 
-Agents: read-only data comes from public GET endpoints that return JSON and ready-to-send transactions. Acting for a user goes through their agent wallet, with an agent key the user creates in Agent Zone (/agents), within the permissions and daily limits they set. Never ask a user for a private key or seed phrase.
+Read-only data comes from public GET endpoints under `/api/place/*`: JSON, no auth, and ready-to-send transactions (`{ "to", "data", "value" }`) where an action is possible. `chain` defaults to Base Sepolia (`84532`). Never ask a user for a private key or seed phrase.
 
-## Agent docs
+## Public read API
 
-- [AGENTS.md](/AGENTS.md): Entry point for agents: what Place is, endpoints and rules.
-- [API reference](/skills/API.md): Every public endpoint and what it returns.
-- [Place skill](/skills/place/SKILL.md): Skill for Claude Code, Cursor, Codex and OpenClaw, acting from the user's agent wallet.
+- `GET /api/place/campaigns?chain=&status=live|upcoming|ended|all`: Reward campaigns for token and NFT holders.
+- `GET /api/place/campaign?chain=&hub=&id=[&address=]`: One campaign; with `address`, eligibility, amount, proof and claim status.
+- `GET /api/place/claims?chain=&address=`: Everything a wallet can claim, with ready `claimMany` transactions.
+- `GET /api/place/token?chain=&address=`: A token or NFT collection and its campaigns.
+- `GET /api/place/collections?chain=[&creator=]`: NFT collections created on Place.
+- `GET /api/place/launch/tokens?chain=`: Tokens launched on the Place launchpad. Also `launch/token`, `launch/candles`, `launch/trades`, `launch/holders`, `launch/creator`, `launch/stats`.
 
 ## Optional
 

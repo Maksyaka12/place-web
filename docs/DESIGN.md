@@ -19,7 +19,7 @@ markup and layout. A theme only changes design tokens, type and motion.
 1. **Never hard-code a colour.** Use the tokens in this file, and no others. A colour written as hex or rgba in a
    component breaks the other theme. Style with classes rather than inline colours and radii.
 2. **One accent.** `--accent` is the only brand colour on a screen. The agent colour is used only for agent features
-   (Agent Zone, Settings, Skill). Grays and white space carry the rest.
+   (Agent Zone, Settings, Skill; hidden while `FEATURES.agents` is off). Grays and white space carry the rest.
 3. **Same layout in every theme.** Never branch markup by theme. If a theme needs a different look for something, add a
    token or a scoped rule in `based.css` (`html[data-theme='based'] ...`).
 4. **Reuse before you build.** Use the components in `src/themes/place/components/ui/index.jsx` and the existing classes.
@@ -324,25 +324,22 @@ before `based.css`.
 
 - **Sidebar item:** 40 px high, padding 0 10 px, 10 px radius, 18 px icon. Active: `--accent-soft` with `--accent`.
   Hover: `--surface-2` with `--text`.
+- **Agent features** (Agent Zone, agent wallet, agent Settings, Skill) sit behind one flag, `FEATURES.agents` in
+  `src/config/features.js`, and ship in the next upgrade. While it is off: `/agents`, `/settings` and `/skill`
+  redirect home, the nav and header leave them out, and Wallet, Swap and Account show the main wallet only (no
+  Main / Agent toggle).
 - **Sidebar groups:** Navigation (Explore, My rewards, Create, My campaigns, Staking, Projects, Wallet, Swap), Launchpad (Launchpad,
-  Launch token, Creator console), Tools, Resources. Admin sits above the wallet pill for Place admins only.
+  Launch token, Creator console), Tools (Skill, agents only), Resources. Admin sits above the wallet pill for Place admins only.
 - **Bottom bar:** Explore, Launch, Create, Rewards, More. Other pages (My campaigns, Staking, Projects, Launch token, Creator console,
-  Wallet, Swap, Docs, Skill) live in the More sheet, and on those pages More counts as the current tab. Classes: `.base-app-bottom-nav`, `.bnav-track`, `.bnav-item`.
+  Wallet, Swap, Docs; Skill and Agent Zone with agents on) live in the More sheet, and on those pages More counts as the current tab. Classes: `.base-app-bottom-nav`, `.bnav-track`, `.bnav-item`.
   - **Dark:** full-width dark bar with `--text-3` icons, `--accent` when active, and a raised 52 px circle in
     the centre (Create).
   - **Based:** a floating bar of white glass, 12 px from the screen edges, with a blur and `--r-xl` corners. All icons
     and labels are `--accent`. A glass marker (`.bnav-glider`, `--r-lg`) slides to the current tab, whose label goes
     from 500 to 600. Create is a regular tab here.
-- **Header:** logo on mobile, then Agent Zone, wallet toggle, theme switcher, and the address pill (Base chain dot,
-  short address, network name on desktop; opens Wallet) or the Connect button. Everything is a pill: 36 px on desktop, 32 px on mobile.
-- **Try demo** (always, with or without a wallet): on desktop a secondary pill in the middle of the header (the header
-  is a `1fr auto 1fr` grid), with an (i) beside it whose popover explains the demo. On
-  phones it is a 40 px `--accent-soft` strip above the header with the same (i) and a × that hides it until the next
-  page load. While the read-only demo is on, both hide and a 40 px amber banner with Tour and Exit demo sits above the
-  header (`src/components/demo/`).
-- **Demo tour** (demo only): a welcome card, then steps (`components/demo/tourState.js`) that open a page, ring one
-  block in `--accent` over a dimmed page and show a card with a caret beside it (docked above the bottom bar on
-  phones). Clicks pass through the dim, so the highlighted action can be tried. The banner's Tour button reopens it.
+- **Header:** logo and menu button on the left on mobile; on the right Agent Zone and the wallet toggle (agents
+  only), the theme switcher (desktop), and the address pill (Base chain dot, short address, network name on desktop;
+  opens Wallet) or the Connect button. Everything is a pill: 36 px on desktop, 32 px on mobile.
 
 ### Campaign card
 

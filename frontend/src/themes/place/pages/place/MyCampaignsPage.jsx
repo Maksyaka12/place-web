@@ -38,7 +38,7 @@ function CampaignRow({ c, own }) {
   const [extendDays, setExtendDays] = useState(null);
   const id = BigInt(c.id);
   const call = (functionName, args, action) =>
-    tx.send({ to: c.hub, abi: PLACE_HUB_ABI, functionName, args, label: action, preview: { action, contract: c.hub, contractLabel: 'PlaceHub', method: `${functionName}(${args.length > 1 ? 'id, newEnd' : 'id'})` } });
+    tx.send({ to: c.hub, abi: PLACE_HUB_ABI, functionName, args, label: action });
   const pct = c.merkleRoot && BigInt(c.totalAllocated) > 0n ? Number((BigInt(c.claimed) * 10000n) / BigInt(c.totalAllocated)) / 100 : 0;
   const days = Number(extendDays);
   const validDays = Number.isInteger(days) && days >= 1 && days <= 365;

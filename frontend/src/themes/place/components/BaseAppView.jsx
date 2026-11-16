@@ -4,8 +4,7 @@ import { BaseAppHeader } from './BaseAppHeader';
 import { BaseAppSidebar } from './BaseAppSidebar';
 import { BaseAppBottomNav } from './BaseAppBottomNav';
 import WalletToggle from '../../../components/wallet/WalletToggle';
-import DemoBanner from '../../../components/demo/DemoBanner';
-import { TryDemoStrip } from '../../../components/demo/TryDemoButton';
+import { FEATURES } from '../../../config/features';
 import { PageHeader } from './ui';
 import ExplorePage from '../pages/place/ExplorePage';
 // The page stylesheets stay in the first bundle, in the order they always had, so lazy pages look exactly the same.
@@ -26,15 +25,19 @@ const PAGES = {
   SwapPanel: () => import('./SwapPanel'),
   WalletPage: () => import('../../../components/wallet/WalletPage'),
   AccountPage: () => import('../../../components/wallet/AccountPage'),
-  AgentsPage: () => import('../../../components/agent/AgentsPage'),
-  SettingsPage: () => import('../../../components/wallet/SettingsPage'),
-  SkillPage: () => import('../../../components/agent/SkillPage'),
   LaunchDashboard: () => import('../../../launch/ui/LaunchDashboard'),
   LaunchForm: () => import('../../../launch/ui/LaunchForm'),
   LaunchTokenPage: () => import('../../../launch/ui/LaunchTokenPage'),
   CreatorConsole: () => import('../../../launch/ui/CreatorConsole'),
   StakingPage: () => import('../../../launch/ui/StakingPage'),
   ProjectsPage: () => import('../../../launch/ui/ProjectsPage'),
+  ...(FEATURES.agents
+    ? {
+        AgentsPage: () => import('../../../components/agent/AgentsPage'),
+        SettingsPage: () => import('../../../components/wallet/SettingsPage'),
+        SkillPage: () => import('../../../components/agent/SkillPage'),
+      }
+    : {}),
 };
 const CampaignPage = lazy(PAGES.CampaignPage);
 const TokenPage = lazy(PAGES.TokenPage);
@@ -45,9 +48,9 @@ const AdminPage = lazy(PAGES.AdminPage);
 const SwapPanel = lazy(PAGES.SwapPanel);
 const WalletPage = lazy(PAGES.WalletPage);
 const AccountPage = lazy(PAGES.AccountPage);
-const AgentsPage = lazy(PAGES.AgentsPage);
-const SettingsPage = lazy(PAGES.SettingsPage);
-const SkillPage = lazy(PAGES.SkillPage);
+const AgentsPage = lazy(() => import('../../../components/agent/AgentsPage'));
+const SettingsPage = lazy(() => import('../../../components/wallet/SettingsPage'));
+const SkillPage = lazy(() => import('../../../components/agent/SkillPage'));
 const LaunchDashboard = lazy(PAGES.LaunchDashboard);
 const LaunchForm = lazy(PAGES.LaunchForm);
 const LaunchTokenPage = lazy(PAGES.LaunchTokenPage);
@@ -89,6 +92,9 @@ class BaseAppErrorBoundary extends React.Component {
   }
 }
 
+// Agent pages (Agent Zone, agent settings, skill) exist only while FEATURES.agents is on.
+const AGENT_TABS = ['agents', 'settings', 'skill'];
+
 /** Which page a path opens. Pages without a nav item highlight the section they belong to (`nav`). */
 export function tabFromPath(pathname) {
   const p = pathname.toLowerCase();
@@ -105,7 +111,7 @@ export function tabFromPath(pathname) {
   if (p.startsWith('/swap')) return 'buy';
   if (p.startsWith('/staking')) return 'staking';
   if (p.startsWith('/projects')) return 'projects';
-  for (const t of ['wallet', 'account', 'agents', 'settings', 'skill']) if (p.startsWith(`/${t}`)) return t;
+  for (const t of ['wallet', 'account', ...(FEATURES.agents ? AGENT_TABS : [])]) if (p.startsWith(`/${t}`)) return t;
   return 'explore';
 }
 
@@ -207,14 +213,14 @@ export function BaseAppView() {
     content = (
       <Page width={480}>
         <PageHeader title="Swap" description="Instant exchange on Base via optimal liquidity routing" />
-        <WalletToggle theme="dark" size="md" label="Swap with" />
+        {FEATURES.agents && <WalletToggle theme="dark" size="md" label="Swap with" />}
         <SwapPanel />
       </Page>
     );
   } else if (tab === 'wallet') {
     content = (
       <Page width={560}>
-        <PageHeader title="Wallet" description="Balances, deposits and transfers for your Place wallets" />
+        <PageHeader title="Wallet" description={FEATURES.agents ? 'Balances, deposits and transfers for your Place wallets' : 'Balances, deposits and transfers for your wallet'} />
         <WalletPage theme="dark" onSwap={() => handleSelectTab('buy')} />
       </Page>
     );
@@ -256,10 +262,6 @@ export function BaseAppView() {
             boxSizing: 'border-box'
           }}
         >
-          {/* Phones: the Try demo strip (desktop has the button in the header). While the demo is on: its banner. */}
-          {!isDesktop && <TryDemoStrip />}
-          <DemoBanner />
-
           <BaseAppHeader isDesktop={isDesktop} onOpenSidebar={() => setIsMobileSidebarOpen(true)} onSelectTab={handleSelectTab} />
 
           <main key={location.pathname} style={{ flex: 1, paddingBottom: isDesktop ? '40px' : '90px' }}>

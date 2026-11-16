@@ -182,7 +182,6 @@ function YourReward({ c, status, address, setAddress, own, you, loading }) {
       functionName: 'claim',
       args: [BigInt(c.id), BigInt(you.amount), you.proof],
       label: 'Claim',
-      preview: { action: 'Claim reward', amount: amountText, contract: c.hub, contractLabel: 'PlaceHub', method: 'claim(id, amount, proof)' },
     });
 
   let body;
@@ -385,7 +384,7 @@ function Finalize({ c }) {
         tx={tx}
         variant="secondary"
         onClick={() =>
-          tx.send({ to: c.hub, abi: PLACE_HUB_ABI, functionName: 'finalize', args: [BigInt(c.id)], label: 'Finalize', preview: { action: 'Close campaign', contract: c.hub, contractLabel: 'PlaceHub', method: 'finalize(id)' } })
+          tx.send({ to: c.hub, abi: PLACE_HUB_ABI, functionName: 'finalize', args: [BigInt(c.id)], label: 'Finalize' })
         }
       >
         Close campaign

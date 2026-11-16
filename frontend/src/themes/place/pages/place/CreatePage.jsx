@@ -215,7 +215,7 @@ function defaultSnapshot() {
 
 function CampaignForm({ kind }) {
   const [params] = useSearchParams();
-  const { address: account, isDemo } = usePlaceAccount();
+  const { address: account } = usePlaceAccount();
   const hub = placeActiveHub();
   const [f, setF] = useState(() => ({
     kind,
@@ -282,20 +282,7 @@ function CampaignForm({ kind }) {
       args: [{ ...plan.params, rulesURI, metadataURI }],
       value: plan.eth ? plan.due : 0n,
       label: 'Create campaign',
-      preview: {
-        action: 'Create and fund campaign',
-        amount: formatToken(plan.due, rewardMeta),
-        contract: hub,
-        contractLabel: 'PlaceHub',
-        method: 'createCampaign(params)',
-        note: 'Rules and details are uploaded to IPFS first.',
-      },
     });
-    // Read-only demo: show the transaction without uploading anything.
-    if (isDemo) {
-      await tx.send(createCall('ipfs://…', 'ipfs://…'));
-      return;
-    }
     try {
       setPhase('pin');
       const pinned = await placeApi.pinRules(plan.rules);
@@ -557,7 +544,7 @@ function CampaignForm({ kind }) {
 /* ── NFT Collection ─────────────────────────────────────────────────────────────────────────────── */
 
 function CollectionForm() {
-  const { address: account, isDemo } = usePlaceAccount();
+  const { address: account } = usePlaceAccount();
   const factory = placeDeployment().nftFactory.address;
   const [f, setF] = useState({
     name: '',
@@ -604,12 +591,7 @@ function CollectionForm() {
       args: [{ ...plan.params, contractURI }],
       value: plan.fee,
       label: 'Create collection',
-      preview: { action: 'Deploy NFT collection', amount: formatToken(plan.fee, { symbol: 'ETH', decimals: 18 }), contract: factory, contractLabel: 'NftFactory', method: 'createCollection(params)' },
     });
-    if (isDemo) {
-      await tx.send(call(''));
-      return;
-    }
     try {
       let contractURI = '';
       if (f.description.trim() || file) {

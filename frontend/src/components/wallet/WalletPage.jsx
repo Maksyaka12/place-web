@@ -4,10 +4,11 @@ import { isAddress, formatUnits } from 'viem';
 import { ArrowDownToLine, Send, ArrowLeftRight, Copy, Check, Bot, Wallet as WalletIcon, ChevronDown, X } from 'lucide-react';
 import { useWalletAssets, TOKENS, tokenAmount } from '../../hooks/useWalletAssets';
 import { isWalletRejection } from '../../config/walletTx';
+import { FEATURES } from '../../config/features';
 import './WalletPages.css';
 
 // Wallet page shared by both themes (`theme` picks the palette): balances of the active wallet,
-// switching between the main and the agent wallet, deposit, send and a shortcut to Swap.
+// switching between the main and the agent wallet (with FEATURES.agents), deposit, send and a shortcut to Swap.
 
 export const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
 const usd = (n) => (n == null ? '…' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -240,7 +241,9 @@ export default function WalletPage({ theme = 'dark', onSwap }) {
         { key: 'agent', name: 'Agent wallet', sub: 'Created at login · used by your agent', address: agentAddress, icon: <Bot size={18} /> },
         { key: 'main', name: 'Main wallet', sub: 'The wallet you connected', address: mainAddress, icon: <WalletIcon size={18} /> },
       ]
-    : [{ key: 'main', name: 'Place wallet', sub: 'Created at login · used by you and your agent', address: mainAddress, icon: <Bot size={18} /> }];
+    : FEATURES.agents
+      ? [{ key: 'main', name: 'Place wallet', sub: 'Created at login · used by you and your agent', address: mainAddress, icon: <Bot size={18} /> }]
+      : [{ key: 'main', name: 'Main wallet', sub: 'The wallet you log in with', address: mainAddress, icon: <WalletIcon size={18} /> }];
 
   const activeWallet = wallets.find((w) => w.key === active) || wallets[0];
   const other = hasAgentWallet ? wallets.find((w) => w.key !== activeWallet.key) : null;

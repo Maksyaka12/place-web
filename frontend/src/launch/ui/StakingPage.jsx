@@ -87,7 +87,7 @@ function useAllowance(token, account, spender) {
 }
 
 function ProgramDetail({ p, now }) {
-  const { address, isDemo } = usePlaceAccount();
+  const { address } = usePlaceAccount();
   const pos = useStakingPosition(p.id, address);
   const bal = useTokenBalance(p.stakingToken.address, address);
   const allowance = useAllowance(p.stakingToken.address, address, p.staking);
@@ -145,7 +145,7 @@ function ProgramDetail({ p, now }) {
                   )}
                 </span>
               </label>
-              <TxButton tx={stakeTx} onClick={stake} fullWidth disabled={!amountIn || tooMuch || !canDeposit || isDemo} busyLabel="Staking on Base...">
+              <TxButton tx={stakeTx} onClick={stake} fullWidth disabled={!amountIn || tooMuch || !canDeposit} busyLabel="Staking on Base...">
                 {!canDeposit ? (p.status === 'ended' ? 'Program ended' : `Opens ${formatUtc(p.depositsOpenAt)}`) : 'Stake'}
               </TxButton>
               <TxResult tx={stakeTx} success="Staked" />
@@ -181,8 +181,8 @@ function ProgramDetail({ p, now }) {
                 tx={claimTx}
                 fullWidth
                 variant="primary"
-                disabled={!pos.data.tx.claim || isDemo}
-                onClick={() => claimTx.send({ label: 'Claim staking rewards', to: pos.data.tx.claim.to, data: pos.data.tx.claim.data, preview: { action: 'Claim staking rewards', contract: p.staking, method: 'claim' } })}
+                disabled={!pos.data.tx.claim}
+                onClick={() => claimTx.send({ label: 'Claim staking rewards', to: pos.data.tx.claim.to, data: pos.data.tx.claim.data })}
                 busyLabel="Claiming on Base..."
               >
                 {pos.data.tx.claim ? `Claim ${formatAmount(claimable.total, p.rewardToken.decimals, { maxDecimals: 6 })} ${p.rewardToken.symbol}` : 'Nothing to claim yet'}
@@ -201,7 +201,6 @@ function ProgramDetail({ p, now }) {
                           <TxButton
                             tx={withdrawTx}
                             size="sm"
-                            disabled={isDemo}
                             onClick={() => withdrawTx.send({ label: 'Withdraw stake', to: p.staking, abi: PLACE_STAKING_ABI, functionName: 'withdraw', args: [p.id, BigInt(l.lotId), BigInt(l.amount), address] })}
                           >
                             Withdraw

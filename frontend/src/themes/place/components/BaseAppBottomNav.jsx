@@ -24,6 +24,7 @@ import { useAccount } from 'wagmi';
 import { THEMES, getTheme, setTheme } from '../../../theme';
 import { usePlaceWallets } from '../../../hooks/usePlaceWallets';
 import { isPlaceAdmin } from '../../../place/moderation';
+import { FEATURES } from '../../../config/features';
 
 
 const NAV_TABS = [
@@ -43,7 +44,7 @@ const MORE_ITEMS = [
   { id: 'wallet', label: 'Wallet', Icon: Wallet },
   { id: 'buy', label: 'Swap', Icon: ArrowLeftRight },
   { id: 'docs', label: 'Docs', Icon: BookOpen },
-  { id: 'skill', label: 'Skill', Icon: Puzzle }
+  ...(FEATURES.agents ? [{ id: 'skill', label: 'Skill', Icon: Puzzle }] : [])
 ];
 
 export function BaseAppBottomNav({ activeTab, onSelectTab }) {
@@ -52,10 +53,9 @@ export function BaseAppBottomNav({ activeTab, onSelectTab }) {
   const { wallets } = useWallets();
   const { address: wagmiAddress } = useAccount();
 
-  const { activeAddress: placeActiveAddress, isDemo } = usePlaceWallets();
+  const { activeAddress: placeActiveAddress } = usePlaceWallets();
   const activeAddress = placeActiveAddress || wallets?.[0]?.address || wagmiAddress;
-  // the read-only demo never shows the admin entry
-  const isAdmin = !isDemo && isPlaceAdmin(activeAddress);
+  const isAdmin = isPlaceAdmin(activeAddress);
 
   // Pages without their own tab open from More, so the marker rests there
   const tabIndex = NAV_TABS.findIndex((tab) => tab.id === activeTab);
@@ -169,6 +169,7 @@ export function BaseAppBottomNav({ activeTab, onSelectTab }) {
               ))}
 
               {/* Agent Zone: in the agent colour, like the header button */}
+              {FEATURES.agents && (
               <button
                 onClick={() => handleTabClick('agents')}
                 style={{
@@ -189,6 +190,7 @@ export function BaseAppBottomNav({ activeTab, onSelectTab }) {
                 <Bot size={18} />
                 <span>Agent Zone</span>
               </button>
+              )}
 
               {isAdmin && (
                 <button

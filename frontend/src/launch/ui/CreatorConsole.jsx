@@ -12,7 +12,6 @@ import { TxButton, TxResult, ConnectButton, CopyAddress, QueryError, Skeleton } 
 import { usePlaceAccount, usePlaceTx, useNow } from '../../place/hooks';
 import { explorerAddress } from '../../place/chain';
 import { formatAmount, formatUtc, shortAddress } from '../../place/format';
-import { guardProvider } from '../../config/demo';
 import { launchApi } from '../client.js';
 import { useLaunchTokens, useCreator, useProfile, launchKeys } from '../hooks.js';
 import { CREATOR_VAULT_ABI } from '../abi.js';
@@ -103,7 +102,7 @@ function ProfileSettings({ address, profile }) {
       if (!wallet) throw new Error('Connect your wallet first');
       const issuedAt = new Date().toISOString();
       const message = profileMessage({ address, profile: clean, issuedAt });
-      const provider = guardProvider(await wallet.getEthereumProvider());
+      const provider = await wallet.getEthereumProvider();
       const signature = await provider.request({ method: 'personal_sign', params: [toHex(message), wallet.address] });
       const r = await launchApi.saveProfile({ address, profile: clean, issuedAt, signature });
       queryClient.setQueryData(launchKeys.profile(address), r);
@@ -377,7 +376,7 @@ function FeeRow({ item }) {
             size="sm"
             disabled={Boolean(c.error) || nothing}
             busyLabel="Claiming on Base..."
-            onClick={() => claimTx.send({ label: 'Claim fees', to: c.tx.to, data: c.tx.data, value: 0n, preview: { action: `Claim ${t.symbol} fees`, contract: c.tx.to, method: 'claim' } })}
+            onClick={() => claimTx.send({ label: 'Claim fees', to: c.tx.to, data: c.tx.data, value: 0n })}
           >
             {nothing ? 'Nothing to claim yet' : 'Claim'}
           </TxButton>

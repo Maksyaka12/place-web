@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { User, Settings, LogOut } from 'lucide-react';
+import { FEATURES } from '../../config/features';
 import './WalletPages.css';
 
 // Popover opened from the sidebar wallet pill: Account, Settings, Logout. `trigger(toggle, open)` renders the pill;
@@ -36,9 +37,11 @@ export default function WalletMenu({ theme = 'dark', side = 'up', onSelect, onLo
           <button type="button" role="menuitem" onClick={pick(() => onSelect('account'))}>
             <User size={15} /> Account
           </button>
-          <button type="button" role="menuitem" onClick={pick(() => onSelect('settings'))}>
-            <Settings size={15} /> Settings
-          </button>
+          {FEATURES.agents && (
+            <button type="button" role="menuitem" onClick={pick(() => onSelect('settings'))}>
+              <Settings size={15} /> Settings
+            </button>
+          )}
           <div className="pw-menu-sep" />
           <button type="button" role="menuitem" className="danger" onClick={pick(onLogout)}>
             <LogOut size={15} /> Logout

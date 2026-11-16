@@ -3,6 +3,7 @@ import { Bot, Wallet as WalletIcon, KeyRound, ArrowRight } from 'lucide-react';
 import { usePlaceWallets } from '../../hooks/usePlaceWallets';
 import { CopyButton, shortAddr } from './WalletPage';
 import AgentAccessCard from './AgentAccessCard';
+import { FEATURES } from '../../config/features';
 import './WalletPages.css';
 
 // Account settings shared by both themes: the account's two wallets. Login is wallet-only:
@@ -11,12 +12,7 @@ import './WalletPages.css';
 export default function AccountPage({ theme = 'dark', onOpenWallet }) {
   const { user } = usePrivy();
   const { exportWallet } = useExportWallet();
-  const { mainAddress, agentAddress, hasAgentWallet, active, isDemo } = usePlaceWallets();
-
-  // the read-only demo never shows or exports the visitor's own account
-  if (isDemo) {
-    return <div className={`pw pw-${theme}`}><div className="pw-card pw-empty">Account settings are not part of the read-only demo.</div></div>;
-  }
+  const { mainAddress, agentAddress, embeddedAddress, hasAgentWallet, active } = usePlaceWallets();
 
   if (!user || !mainAddress) {
     return <div className={`pw pw-${theme}`}><div className="pw-card pw-empty">Log in to manage your account.</div></div>;
@@ -30,7 +26,9 @@ export default function AccountPage({ theme = 'dark', onOpenWallet }) {
         { key: 'agent', name: 'Agent wallet', address: agentAddress, icon: <Bot size={18} />, embedded: true },
         { key: 'main', name: 'Main wallet', address: mainAddress, icon: <WalletIcon size={18} />, embedded: false },
       ]
-    : [{ key: 'main', name: 'Place wallet', address: mainAddress, icon: <Bot size={18} />, embedded: agentAddress?.toLowerCase() === mainAddress.toLowerCase() }];
+    : FEATURES.agents
+      ? [{ key: 'main', name: 'Place wallet', address: mainAddress, icon: <Bot size={18} />, embedded: agentAddress?.toLowerCase() === mainAddress.toLowerCase() }]
+      : [{ key: 'main', name: 'Main wallet', address: mainAddress, icon: <WalletIcon size={18} />, embedded: embeddedAddress?.toLowerCase() === mainAddress.toLowerCase() }];
 
   return (
     <div className={`pw pw-${theme}`}>
@@ -44,7 +42,9 @@ export default function AccountPage({ theme = 'dark', onOpenWallet }) {
         <div className="pw-muted pw-sub">
           {hasAgentWallet
             ? 'Your account has two wallets: the one you connected and the agent wallet created for you at login.'
-            : 'The wallet created for you at login. You and your agent both use it.'}
+            : FEATURES.agents
+              ? 'The wallet created for you at login. You and your agent both use it.'
+              : 'The wallet you log in with. Place shows and acts with this wallet.'}
         </div>
         <div className="pw-wallets">
           {wallets.map((w) => (
@@ -73,7 +73,7 @@ export default function AccountPage({ theme = 'dark', onOpenWallet }) {
         </button>
       </div>
 
-      <AgentAccessCard agentAddress={hasAgentWallet ? agentAddress : null} />
+      {FEATURES.agents && <AgentAccessCard agentAddress={hasAgentWallet ? agentAddress : null} />}
     </div>
   );
 }

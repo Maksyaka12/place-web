@@ -7,17 +7,16 @@ import { ThemeSwitcher } from './ThemeSwitcher';
 import WalletToggle from '../../../components/wallet/WalletToggle';
 import AgentsButton from '../../../components/agent/AgentsButton';
 import { usePlaceWallets } from '../../../hooks/usePlaceWallets';
-import TryDemoButton from '../../../components/demo/TryDemoButton';
+import { FEATURES } from '../../../config/features';
 
 export function BaseAppHeader({ onOpenSidebar, onSelectTab, isDesktop = false }) {
   const { login, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
 
-  const { activeAddress: placeActiveAddress, isDemo } = usePlaceWallets();
+  const { activeAddress: placeActiveAddress } = usePlaceWallets();
   const activeAddress = placeActiveAddress || wallets?.[0]?.address || wagmiAddress;
-  // the read-only demo shows the demo address, as for a connected wallet
-  const hasWallet = (authenticated && !!activeAddress) || (isWagmiConnected && !!wagmiAddress) || (isDemo && !!activeAddress);
+  const hasWallet = (authenticated && !!activeAddress) || (isWagmiConnected && !!wagmiAddress);
 
   return (
     <header
@@ -26,10 +25,9 @@ export function BaseAppHeader({ onOpenSidebar, onSelectTab, isDesktop = false })
         height: '64px',
         background: 'var(--bg-bar)',
         borderBottom: '1px solid var(--border)',
-        // desktop: three columns, so Try demo sits in the middle of the header whatever the sides hold
-        ...(isDesktop
-          ? { display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: '16px' }
-          : { display: 'flex', justifyContent: 'space-between' }),
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: '16px',
         alignItems: 'center',
         padding: isDesktop ? '0 24px' : '0 8px',
         position: 'sticky',
@@ -79,17 +77,10 @@ export function BaseAppHeader({ onOpenSidebar, onSelectTab, isDesktop = false })
         )}
       </div>
 
-      {/* Desktop: Try demo in the middle, always there (also with a wallet connected) */}
-      {isDesktop && (
-        <div className="pl-demo-try-slot">
-          <TryDemoButton isDesktop />
-        </div>
-      )}
-
       {/* Right side: two pills or Connect Wallet */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', justifySelf: 'end', gap: isDesktop ? '8px' : '4px', minWidth: 0 }}>
-        <AgentsButton theme="dark" />
-        {hasWallet && !isDemo && <WalletToggle theme="dark" size="sm" />}
+        {FEATURES.agents && <AgentsButton theme="dark" />}
+        {FEATURES.agents && hasWallet && <WalletToggle theme="dark" size="sm" />}
         {isDesktop && <ThemeSwitcher />}
         {hasWallet ? (
           <button

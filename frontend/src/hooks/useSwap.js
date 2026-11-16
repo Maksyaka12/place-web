@@ -6,8 +6,6 @@ import { sendWalletTx, isWalletRejection, waitUntil } from '../config/walletTx';
 import { fetchUsdPrices } from '../config/prices';
 import { BASE_TOKENS, ERC20_ABI, ETH, USDC, readTokenBalance, resolveToken, tokenKey } from '../config/tokens';
 import { usePlaceWallets } from './usePlaceWallets';
-import { useDemoMode } from './useDemoMode';
-import { isDemoActive, showDemoTxPreview } from '../config/demo';
 
 // Swap between any two tokens on Base, shared by the Swap page.
 // - Quotes LI.FI and KyberSwap in parallel and takes the one that gives the user more; a quote older than 30 s or
@@ -103,9 +101,7 @@ function initialPair() {
 }
 
 export function useSwap() {
-  const { authenticated: walletConnected, login } = usePrivy();
-  const { demo } = useDemoMode();
-  const authenticated = walletConnected || demo; // the read-only demo can quote and preview, never send
+  const { authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const { activeAddress } = usePlaceWallets();
 
@@ -192,8 +188,7 @@ export function useSwap() {
   const key = amountWei ? `${tokenKey(tokenIn)}:${tokenKey(tokenOut)}:${amountWei}:${slippage}:${from.toLowerCase()}` : '';
   const balanceIn = balances[tokenKey(tokenIn)] ?? null;
   const balanceOut = balances[tokenKey(tokenOut)] ?? null;
-  // the demo only previews, so it can try any amount
-  const insufficient = Boolean(!demo && activeAddress && amountWei && balanceIn != null && amountWei > balanceIn);
+  const insufficient = Boolean(activeAddress && amountWei && balanceIn != null && amountWei > balanceIn);
 
   const setFromAmount = (v) => {
     setTxStatus({ type: '', msg: '', hash: '' });
@@ -262,18 +257,6 @@ export function useSwap() {
       return;
     }
     if (!amountWei || insufficient) return;
-    // Read-only demo: preview the swap with the live quote, send nothing.
-    if (isDemoActive()) {
-      const inLabel = `${formatUnits(amountWei, tokenIn.decimals)} ${tokenIn.symbol}`;
-      showDemoTxPreview({
-        action: `Swap ${tokenIn.symbol} → ${tokenOut.symbol}${liveQuote ? ` via ${liveQuote.engine}` : ''}`,
-        amount: liveQuote ? `${inLabel} → ~${toAmount} ${tokenOut.symbol}` : inLabel,
-        contract: liveQuote?.spender || '',
-        contractLabel: liveQuote ? `${liveQuote.engine} router` : '',
-        note: `Slippage ${slippage}%.${tokenIn.address ? ` First asks for a ${tokenIn.symbol} approval for exactly this amount.` : ''}`,
-      });
-      return;
-    }
     setSwapping(true);
     try {
       // a fresh quote for exactly these inputs

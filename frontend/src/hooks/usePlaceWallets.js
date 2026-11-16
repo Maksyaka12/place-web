@@ -1,12 +1,12 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { DEMO_ADDRESS } from '../config/demo';
-import { useDemoFlag } from './useDemoMode';
+import { FEATURES } from '../config/features';
 
 // One Place account = the wallet the user connected (main) + the Privy embedded wallet created at their
 // first login (the agent wallet). Both are separate participants (own balances, rewards); the site
 // shows and acts with the active one. Login is wallet-only; accounts created earlier with email or socials
-// have only the embedded wallet, which is then their main wallet too.
+// have only the embedded wallet, which is then their main wallet too. While agent features are off
+// (FEATURES.agents), the site shows and acts with the main wallet only.
 
 const STORAGE_KEY = 'place_active_wallet';
 const EVENT = 'place_active_wallet_change';
@@ -40,29 +40,14 @@ export function setActiveWallet(which) {
 export function usePlaceWallets() {
   const { user } = usePrivy();
   const choice = useSyncExternalStore(subscribe, read, () => 'main');
-  const demoFlag = useDemoFlag();
   const setActive = useCallback((which) => setActiveWallet(which), []);
-
-  // Read-only demo: the whole site shows the fixed demo address, also when the visitor's own wallet is
-  // connected (that wallet comes back on Exit demo).
-  if (demoFlag) {
-    return {
-      mainAddress: DEMO_ADDRESS,
-      agentAddress: null,
-      hasAgentWallet: false,
-      active: 'main',
-      activeAddress: DEMO_ADDRESS,
-      isDemo: true,
-      setActive,
-    };
-  }
 
   const wallets = (user?.linkedAccounts || []).filter((a) => a.type === 'wallet' && a.chainType !== 'solana');
   const embedded = wallets.find((a) => EMBEDDED_TYPES.includes(a.walletClientType));
   const external = wallets.find((a) => !EMBEDDED_TYPES.includes(a.walletClientType));
 
   const mainAddress = external?.address || embedded?.address || user?.wallet?.address || null;
-  const agentAddress = embedded?.address || null;
+  const agentAddress = FEATURES.agents ? embedded?.address || null : null;
   // a separate agent wallet exists only when the user also connected their own wallet
   const hasAgentWallet = Boolean(agentAddress && mainAddress && agentAddress.toLowerCase() !== mainAddress.toLowerCase());
   const active = choice === 'agent' && hasAgentWallet ? 'agent' : 'main';
@@ -70,10 +55,10 @@ export function usePlaceWallets() {
   return {
     mainAddress,
     agentAddress,
+    embeddedAddress: embedded?.address || null,
     hasAgentWallet,
     active,
     activeAddress: active === 'agent' ? agentAddress : mainAddress,
-    isDemo: false,
     setActive,
   };
 }

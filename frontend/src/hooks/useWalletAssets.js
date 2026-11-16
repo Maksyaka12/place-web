@@ -66,8 +66,6 @@ export function useWalletAssets() {
       wallets,
       address: from,
       ...tx,
-      // shown instead of sending while the read-only demo is on
-      preview: { action: `Send ${token} to ${to.slice(0, 6)}…${to.slice(-4)}`, amount: `${amount} ${token}`, contract: tx.to, contractLabel: t.address ? token : 'Recipient', method: t.address ? 'transfer(to, amount)' : '' },
     });
     if (hash) {
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000 });

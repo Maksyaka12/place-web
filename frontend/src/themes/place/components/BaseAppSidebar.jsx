@@ -24,6 +24,7 @@ import {
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useAccount, useDisconnect } from 'wagmi';
 import { usePlaceWallets } from '../../../hooks/usePlaceWallets';
+import { FEATURES } from '../../../config/features';
 import WalletMenu from '../../../components/wallet/WalletMenu';
 import { isPlaceAdmin } from '../../../place/moderation';
 
@@ -99,9 +100,7 @@ export function BaseAppSidebar({
     { id: 'launch-profile', name: 'Creator console', icon: <UserRound size={18} strokeWidth={1.75} /> }
   ];
 
-  const toolsItems = [
-    { id: 'skill', name: 'Skill', icon: <Puzzle size={18} strokeWidth={1.75} /> }
-  ];
+  const toolsItems = FEATURES.agents ? [{ id: 'skill', name: 'Skill', icon: <Puzzle size={18} strokeWidth={1.75} /> }] : [];
 
   const docsItems = [
     { id: 'docs', name: 'Docs', icon: <BookOpen size={18} strokeWidth={1.75} /> }
@@ -477,7 +476,8 @@ export function BaseAppSidebar({
             )}
           </div>
 
-          {/* Section: Tools */}
+          {/* Section: Tools (agent tools, shown only while FEATURES.agents is on) */}
+          {toolsItems.length > 0 && (
           <div style={{ marginBottom: '8px' }}>
             {!isCollapsed && (
               <div
@@ -571,6 +571,7 @@ export function BaseAppSidebar({
               </div>
             )}
           </div>
+          )}
 
           {/* Section 2: Resources */}
           <div style={{ marginBottom: '8px' }}>

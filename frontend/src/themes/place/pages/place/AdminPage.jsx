@@ -14,7 +14,6 @@ import { PLACE_CHAIN_ID, placeClient, placeDeployment } from '../../../../place/
 import { PLACE_CONFIG_ABI } from '../../../../place/abi';
 import { moderationMessage, isPlaceAdmin } from '../../../../place/moderation';
 import { viewStatus } from '../../../../place/status';
-import { guardProvider } from '../../../../config/demo';
 import { isWalletRejection } from '../../../../config/walletTx';
 import { formatToken, assetLabel } from '../../../../place/format';
 import { StatusBadge, AddressLink, ConnectButton, QueryError, Skeleton, campaignTitle, campaignPath } from './parts';
@@ -34,7 +33,7 @@ function useModerate() {
       const issuedAt = new Date().toISOString();
       const admin = wallet.address.toLowerCase();
       const message = moderationMessage({ admin, chainId: PLACE_CHAIN_ID, action, type, target, issuedAt });
-      const provider = guardProvider(await wallet.getEthereumProvider());
+      const provider = await wallet.getEthereumProvider();
       const signature = await provider.request({ method: 'personal_sign', params: [toHex(message), wallet.address] });
       await placeApi.hide({ action, type, target, admin, issuedAt, signature, reason });
       setState({ busy: null, error: null, done: `${action === 'hide' ? 'Hidden' : 'Shown again'}: ${type} ${target}` });
@@ -152,8 +151,8 @@ function AssetForm({ mod }) {
 }
 
 export default function AdminPage() {
-  const { address, isDemo } = usePlaceAccount();
-  const admin = !isDemo && isPlaceAdmin(address);
+  const { address } = usePlaceAccount();
+  const admin = isPlaceAdmin(address);
   const mod = useModerate();
   const campaigns = useCampaigns({ status: 'all', includeHidden: 1, limit: 100 }, { enabled: admin });
   const list = campaigns.data?.campaigns || [];

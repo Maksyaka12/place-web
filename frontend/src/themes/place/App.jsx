@@ -7,7 +7,7 @@ import { DATA_SUFFIX } from '../../config/builderCode';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { base, baseSepolia } from 'viem/chains';
 import { BaseAppView } from './components/BaseAppView';
-import DemoController from '../../components/demo/DemoController';
+import { FEATURES } from '../../config/features';
 import { PLACE_CHAIN } from '../../place/chain';
 import './index.css';
 
@@ -36,9 +36,7 @@ const SHELL_PATHS = [
   '/swap',
   '/wallet',
   '/account',
-  '/agents',
-  '/settings',
-  '/skill',
+  ...(FEATURES.agents ? ['/agents', '/settings', '/skill'] : []),
   '/staking',
   '/projects',
   '/launch',
@@ -93,7 +91,6 @@ export default function App() {
         <PrivyWagmiProvider config={privyWagmiConfig}>
           <BrowserRouter>
             <ScrollToTop />
-            <DemoController />
             <DomainRouter />
           </BrowserRouter>
         </PrivyWagmiProvider>

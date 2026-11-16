@@ -1,6 +1,8 @@
 // Vercel serverless function: the whole agent API in one function (Hobby allows 12 per deployment).
 // vercel.json rewrites /api/swap and /api/agent/{act,token,settings} here as ?route=<name>; /api/agent itself is
-// the index. Logic lives in ./_lib/agent.js and ./_lib/agentWallet.js.
+// the index. Logic lives in ./_lib/agent.js and ./_lib/agentWallet.js. While FEATURES.agents is off, every
+// route answers 404.
+import { FEATURES } from '../src/config/features.js';
 import { handleAgentIndex, handleSwap } from './_lib/agent.js';
 import { handleAgentAct, handleAgentToken, handleAgentSettings } from './_lib/agentWallet.js';
 
@@ -15,6 +17,10 @@ const ROUTES = {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  if (!FEATURES.agents) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(404).send(JSON.stringify({ error: 'Not available yet' }));
+  }
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');

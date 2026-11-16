@@ -7,7 +7,6 @@ import { placeApi, fetchIpfsJson } from './api.js';
 import { PLACE_CHAIN, PLACE_CHAIN_ID, placeClient } from './chain.js';
 import { usePlaceWallets } from '../hooks/usePlaceWallets';
 import { appendBuilderSuffix } from '../config/builderCode';
-import { blockInDemo, guardProvider, isDemoModeError } from '../config/demo';
 import { isWalletRejection } from '../config/walletTx';
 
 const lc = (a) => (a ? String(a).toLowerCase() : a);
@@ -76,10 +75,10 @@ export function useCampaignMeta(campaign) {
   return useIpfsJson(campaign?.metadataURI);
 }
 
-/** The address the portal shows: the demo holder, else the active wallet. */
+/** The address the portal shows: the active wallet. */
 export function usePlaceAccount() {
-  const { activeAddress, isDemo } = usePlaceWallets();
-  return { address: activeAddress ? activeAddress.toLowerCase() : null, isDemo };
+  const { activeAddress } = usePlaceWallets();
+  return { address: activeAddress ? activeAddress.toLowerCase() : null };
 }
 
 /** A clock for countdowns and status changes. */
@@ -103,9 +102,9 @@ export function txErrorMessage(e) {
 
 /**
  * One on-chain action: idle → wallet → pending → success | error. `send(steps)` takes a list of calls
- * ({to, abi, functionName, args, value} or {to, data, value}, each with an optional `label` and `preview`)
+ * ({to, abi, functionName, args, value} or {to, data, value}, each with an optional `label`)
  * and sends them one after another from the active wallet on the Place chain, waiting for each receipt.
- * Rejecting in the wallet returns to idle quietly; in the read-only demo the first call shows its preview.
+ * Rejecting in the wallet returns to idle quietly.
  */
 export function usePlaceTx({ onSuccess } = {}) {
   const { wallets } = useWallets();
@@ -120,12 +119,11 @@ export function usePlaceTx({ onSuccess } = {}) {
       const list = Array.isArray(calls) ? calls : [calls];
       try {
         const first = list[0];
-        blockInDemo(first.preview || { action: first.label || 'Send transaction', contract: first.to, method: first.functionName || '' });
         const wallet = wallets?.find((w) => w.address?.toLowerCase() === activeAddress?.toLowerCase()) || wallets?.[0];
         if (!wallet) throw new Error('Connect a wallet first');
         setState({ status: 'wallet', step: first.label || null, hash: null, error: null });
         if (Number(String(wallet.chainId || '').split(':').pop()) !== PLACE_CHAIN_ID) await wallet.switchChain(PLACE_CHAIN_ID);
-        const provider = guardProvider(await wallet.getEthereumProvider());
+        const provider = await wallet.getEthereumProvider();
         const walletClient = createWalletClient({ account: wallet.address, chain: PLACE_CHAIN, transport: custom(provider) });
         const client = placeClient();
         let hash = null;
@@ -145,7 +143,7 @@ export function usePlaceTx({ onSuccess } = {}) {
         onSuccess?.(receipt);
         return receipt;
       } catch (e) {
-        if (isDemoModeError(e) || isWalletRejection(e)) {
+        if (isWalletRejection(e)) {
           reset();
           return null;
         }

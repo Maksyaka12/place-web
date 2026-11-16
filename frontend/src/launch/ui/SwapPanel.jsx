@@ -26,7 +26,7 @@ function useDebounced(value, ms) {
 
 export function SwapPanel({ token }) {
   const d = launchD();
-  const { address, isDemo } = usePlaceAccount();
+  const { address } = usePlaceAccount();
   const [side, setSide] = useState('buy');
   const [text, setText] = useState('');
   const [slippage, setSlippage] = useState(300);
@@ -192,7 +192,7 @@ export function SwapPanel({ token }) {
       {!address ? (
         <ConnectButton size="lg">Connect wallet to trade</ConnectButton>
       ) : (
-        <TxButton tx={tx} onClick={submit} size="lg" fullWidth disabled={!amountIn || short || minOut == null || isDemo} busyLabel="Swapping on Base...">
+        <TxButton tx={tx} onClick={submit} size="lg" fullWidth disabled={!amountIn || short || minOut == null} busyLabel="Swapping on Base...">
           {label}
         </TxButton>
       )}

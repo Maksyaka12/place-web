@@ -34,7 +34,6 @@ function ClaimRow({ c, account, canSend }) {
       functionName: 'claimFor',
       args: [account, BigInt(c.id), BigInt(c.amount), c.proof],
       label: 'Claim',
-      preview: { action: 'Claim reward', amount, contract: c.hub, contractLabel: 'PlaceHub', method: 'claimFor(account, id, amount, proof)' },
     });
   const done = tx.status === 'success';
   return (
@@ -115,13 +114,6 @@ export default function RewardsPage() {
         data: t.data,
         value: t.value,
         label: data.transactions.length > 1 ? `Claim all (${i + 1} of ${data.transactions.length})` : 'Claim all',
-        preview: {
-          action: `Claim all: ${t.campaigns.length} campaign${t.campaigns.length === 1 ? '' : 's'}`,
-          amount: sums.map((s) => formatToken(s.raw, s.meta)).join(' + '),
-          contract: t.to,
-          contractLabel: 'PlaceHub',
-          method: 'claimMany(account, ids, amounts, proofs)',
-        },
       }))
     );
 

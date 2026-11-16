@@ -133,7 +133,7 @@ function toLaunchParams(p) {
 
 export default function LaunchForm() {
   const navigate = useNavigate();
-  const { address, isDemo } = usePlaceAccount();
+  const { address } = usePlaceAccount();
   const pairsQ = usePairs();
   const pairs = useMemo(() => pairsQ.data?.pairs || [], [pairsQ.data]);
   const d = launchD();
@@ -311,10 +311,9 @@ export default function LaunchForm() {
           args: [params, { fundingToken: q, amountIn: devIn, minAmountOut: 1n, routeData: DIRECT_ROUTE }],
         }),
         value: BigInt(p.nativeLaunchFee) + (q === ETH ? devIn : 0n),
-        preview: { action: `Launch ${symbol} with a dev buy`, contract: d.factory, method: 'createLaunchAndBuy' },
       });
     } else {
-      calls.push({ label: 'Launch', to: d.factory, data: p.tx.data, value: BigInt(p.tx.value), preview: { action: `Launch ${symbol}`, contract: d.factory, method: 'createLaunch' } });
+      calls.push({ label: 'Launch', to: d.factory, data: p.tx.data, value: BigInt(p.tx.value) });
     }
     const payTo = split && payout.trim() && payout.trim().toLowerCase() !== address ? payout.trim() : null;
     if (payTo) calls.push({ label: 'Set the payout wallet', to: p.vault, abi: CREATOR_VAULT_ABI, functionName: 'setPayoutAddress', args: [payTo] });
@@ -602,7 +601,7 @@ export default function LaunchForm() {
             {!address ? (
               <ConnectButton size="lg">Connect wallet to launch</ConnectButton>
             ) : (
-              <TxButton tx={tx} onClick={launch} size="lg" fullWidth disabled={!ready || isDemo || Boolean(stage) || !prediction.data} busyLabel="Launching on Base...">
+              <TxButton tx={tx} onClick={launch} size="lg" fullWidth disabled={!ready || Boolean(stage) || !prediction.data} busyLabel="Launching on Base...">
                 {stage || `Launch ${symbol ? `$${symbol}` : 'token'} · ${formatAmount(fee + (devIn && quoteAddress(quote) === ETH ? devIn : 0n), 18)} ETH`}
               </TxButton>
             )}

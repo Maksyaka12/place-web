@@ -105,11 +105,11 @@ function FundForm({ t, v, onDone }) {
   const send = () => {
     if (kind === 'campaign') {
       const req = { fundAsset, amountIn, rewardToken: rewardAddr, minOut, snapshotDelay: BigInt(snapshotDelay), claimDuration: claimWindow, burnLeftover, metadataURI: '' };
-      return tx.send({ label: 'Holder campaign from the fund', to: v.address, abi: CREATOR_VAULT_ABI, functionName: 'fundCampaign', args: [req], preview: { action: `Fund a ${t.symbol} holder campaign`, contract: v.address, method: 'fundCampaign' } });
+      return tx.send({ label: 'Holder campaign from the fund', to: v.address, abi: CREATOR_VAULT_ABI, functionName: 'fundCampaign', args: [req] });
     }
     const startTime = BigInt(Math.floor(Date.now() / 1000) + startIn);
     const req = { fundAsset, amountIn, rewardToken: rewardAddr, minOut, startTime, epochDuration: BigInt(epoch), epochCount: BigInt(epochs), earlyExitMode: 0, penaltyBps: 0 };
-    return tx.send({ label: 'Staking program from the fund', to: v.address, abi: CREATOR_VAULT_ABI, functionName: 'fundStaking', args: [req], preview: { action: `Fund ${t.symbol} staking`, contract: v.address, method: 'fundStaking' } });
+    return tx.send({ label: 'Staking program from the fund', to: v.address, abi: CREATOR_VAULT_ABI, functionName: 'fundStaking', args: [req] });
   };
 
   return (
@@ -294,7 +294,7 @@ export function VaultPanel({ item, PayoutForm }) {
           </span>
           {c.error ? <span className="pl-place-hint error">{vaultReason(c.error, q)}</span> : <span className="pl-launch-fee-value mono">{fmtQ(c.paid)}</span>}
           <span className="pl-launch-fee-sub">Claiming also runs the burn when it is due.</span>
-          <TxButton tx={claimTx} size="sm" disabled={paid === 0n} busyLabel="Claiming on Base..." onClick={() => claimTx.send({ label: 'Claim fees', to: c.tx.to, data: c.tx.data, value: 0n, preview: { action: `Claim ${t.symbol} fees`, contract: c.tx.to, method: 'claim' } })}>
+          <TxButton tx={claimTx} size="sm" disabled={paid === 0n} busyLabel="Claiming on Base..." onClick={() => claimTx.send({ label: 'Claim fees', to: c.tx.to, data: c.tx.data, value: 0n })}>
             {paid === 0n ? 'Nothing to claim yet' : 'Claim'}
           </TxButton>
           <TxResult tx={claimTx} success="Claimed" />
@@ -309,7 +309,7 @@ export function VaultPanel({ item, PayoutForm }) {
             {v.process.canRun && v.process.tokensBurned ? `Process now: ~${fmtT(v.process.tokensBurned)} burned` : vaultReason(v.process.reason, q) || 'Waiting for trading fees'}
             {` · up to ${fmtQ(v.burn.maxPerProcess)} per run`}
           </span>
-          <TxButton tx={processTx} size="sm" variant="secondary" disabled={!v.process.canRun} busyLabel="Processing on Base..." onClick={() => processTx.send({ label: 'Run process', to: v.process.tx.to, data: v.process.tx.data, value: 0n, preview: { action: 'Collect fees and burn', contract: v.address, method: 'process' } })}>
+          <TxButton tx={processTx} size="sm" variant="secondary" disabled={!v.process.canRun} busyLabel="Processing on Base..." onClick={() => processTx.send({ label: 'Run process', to: v.process.tx.to, data: v.process.tx.data, value: 0n })}>
             Run process()
           </TxButton>
           <TxResult tx={processTx} success="Processed" />
