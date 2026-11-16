@@ -4,6 +4,7 @@ import { Search, X, Check, ChevronDown } from 'lucide-react';
 import { EmptyState } from '../../themes/place/components/ui';
 import { isTestnet } from '../../place/chain';
 import { TokenLogo } from './parts.jsx';
+import { pairIcon } from '../pairs.js';
 import { usd, smallNumber } from '../format.js';
 
 export function PairButton({ pair, onClick, disabled }) {
@@ -11,7 +12,7 @@ export function PairButton({ pair, onClick, disabled }) {
     <button type="button" className="pl-launch-pair-btn" onClick={onClick} disabled={disabled}>
       {pair ? (
         <>
-          <TokenLogo token={{ symbol: pair.symbol }} size={28} shape="round" />
+          <TokenLogo token={{ symbol: pair.symbol }} src={pairIcon(pair)} size={28} shape="round" />
           <span className="pl-launch-pair-btn-main">
             <span className="pl-launch-strong">{pair.symbol}</span>
             <span className="pl-launch-muted">{pair.name}</span>
@@ -74,7 +75,7 @@ export function PairPicker({ pairs, value, onPick, onClose }) {
                   onClose();
                 }}
               >
-                <TokenLogo token={{ symbol: p.symbol }} size={32} shape="round" />
+                <TokenLogo token={{ symbol: p.symbol }} src={pairIcon(p)} size={32} shape="round" />
                 <span className="pl-launch-picker-item-main">
                   <span className="pl-launch-strong">{p.symbol}</span>
                   <span className="pl-launch-muted">{p.name}</span>
