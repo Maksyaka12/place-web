@@ -32,9 +32,7 @@ const SHELL_PATHS = [
   '/hub',
   '/campaign/:hub/:id',
   '/token/:address',
-  '/rewards',
   '/create',
-  '/my',
   '/admin',
   '/swap',
   '/wallet',
@@ -42,6 +40,7 @@ const SHELL_PATHS = [
   ...(FEATURES.agents ? ['/agents', '/settings', '/skill'] : []),
   '/staking',
   '/projects',
+  '/projects/register',
   '/launch/new',
   '/launch/nft',
   '/launch/token/:address',
@@ -51,6 +50,12 @@ const SHELL_PATHS = [
 function LegacyProfileRedirect() {
   const { pathname, search } = useLocation();
   return <Navigate to={`${pathname.replace(/^\/launch\/profile/, '/profile')}${search}`} replace />;
+}
+
+// Former Rewards hub tabs: My rewards and My campaigns now live in the profile.
+function MovedTo({ to }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
 }
 
 function DomainRouter() {
@@ -67,6 +72,8 @@ function DomainRouter() {
       <Route path="/create/collection" element={<Navigate to="/launch/nft" replace />} />
       <Route path="/create/:kind" element={<Navigate to="/create" replace />} />
       <Route path="/launch/profile/*" element={<LegacyProfileRedirect />} />
+      <Route path="/rewards" element={<MovedTo to="/profile/rewards" />} />
+      <Route path="/my" element={<MovedTo to="/profile/campaigns" />} />
       <Route path="/docs" element={docs} />
       <Route path="/docs/:slug" element={docs} />
       <Route path="*" element={<Navigate to="/" replace />} />

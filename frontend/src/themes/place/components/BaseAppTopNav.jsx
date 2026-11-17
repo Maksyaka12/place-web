@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
+  BadgeCheck,
   BookOpen,
   Boxes,
   ChevronDown,
@@ -44,16 +45,17 @@ export const NAV_SECTIONS = [
   { section: 'stocks', label: 'Stocks', to: '/stocks', Icon: LineChart },
   { section: 'profile', label: 'Profile', to: '/profile', Icon: UserRound },
   { section: 'hub', label: 'Rewards', to: '/hub', Icon: Gift },
+  { section: 'projects', label: 'Projects', to: '/projects', Icon: Boxes },
 ];
 
 /** Everything else, in the product menu next to the logo. */
 const MORE_LINKS = [
-  { label: 'My rewards', to: '/rewards', Icon: Gift },
+  { label: 'My rewards', to: '/profile/rewards', Icon: Gift },
   { label: 'Staking', to: '/hub?type=staking', Icon: Coins },
   { label: 'Create vault / campaign', to: '/create', Icon: PlusCircle },
   { label: 'Launch NFT', to: '/launch/nft', Icon: Sparkles },
-  { label: 'My campaigns', to: '/my', Icon: LayoutDashboard },
-  { label: 'Projects', to: '/projects', Icon: Boxes },
+  { label: 'My campaigns', to: '/profile/campaigns', Icon: LayoutDashboard },
+  { label: 'Register token', to: '/projects/register', Icon: BadgeCheck },
   { label: 'Wallet', to: '/wallet', Icon: Wallet },
   { label: 'Swap', to: '/swap', Icon: ArrowLeftRight },
   ...(FEATURES.agents ? [{ label: 'Skill', to: '/skill', Icon: Puzzle }] : []),

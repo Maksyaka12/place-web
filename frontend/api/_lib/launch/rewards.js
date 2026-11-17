@@ -4,7 +4,8 @@
 //   GET launch/reward-tokens ?chain&quote=<address|eth>
 //       what a launch on this pair may pay holder / trader rewards in: the pair itself (source 'pair'), the
 //       launched token (address 'self', source 'self') and every listed route target of the reward token
-//       registry (source 'route')
+//       registry (source 'route'); each with its picker tab (category: majors, stocks or crypto; none for 'self'),
+//       an icon URL when one is known (logo), the contractURI of tokens launched on Place and placeLaunch
 //   GET launch/rewards ?chain&account
 //       what the account can claim from every stream (cumulative amount, proof, already claimed) and one
 //       ready claimMany transaction per distributor; amounts of tables not published yet are `pending`
@@ -19,6 +20,8 @@ import { ensureTokenMeta } from '../place/tokenMeta.js';
 import { retry } from '../place/chain.js';
 import { EPOCH } from './indexer.js';
 import { rates, ratesPercent } from './taxMath.js';
+import { CRYPTO_SYMBOLS, pairCategory, pairIcon } from '../../../src/launch/pairs.js';
+import { stockCategory } from '../../../src/launch/stockCategories.js';
 
 const ETH = '0x0000000000000000000000000000000000000000';
 const outAddr = (a) => (a === ETH ? 'eth' : a);
@@ -52,6 +55,19 @@ export async function metaOf(deps, chainId, addrs) {
 
 // ─────────────────────────────── reward tokens for the launch form ───────────────────────────────
 
+const MAJORS = new Set(CRYPTO_SYMBOLS.map((x) => x.toLowerCase()));
+
+/**
+ * The picker tab of a reward token: 'majors' (ETH, USDC and the Coinbase-wrapped majors), 'stocks' (a tokenized stock:
+ * a known ticker, or a stock pair asset of the factory) or 'crypto' (any other token, Place launches included).
+ */
+export function rewardTokenCategory(symbol, { quote = false } = {}) {
+  const sym = String(symbol || '');
+  if (MAJORS.has(sym.toLowerCase())) return 'majors';
+  if (stockCategory(sym) || (quote && pairCategory(sym) === 'stocks')) return 'stocks';
+  return 'crypto';
+}
+
 /** Reward token options of a pair: the pair, the token itself ('self'), listed routes from the pair. */
 export async function rewardTokenOptions(deps, chainId, quote) {
   const registry = rewardRegistry(chainId);
@@ -60,11 +76,29 @@ export async function rewardTokenOptions(deps, chainId, quote) {
     : [];
   const targets = routes.map((r) => r.to_token).filter((a) => a !== quote);
   const info = await metaOf(deps, chainId, [quote, ...targets]);
+  const erc = [quote, ...targets].filter((a) => a !== ETH);
+  const quotes = new Set(erc.length ? (await deps.db.query('select quote from launch_quotes where chain_id = $1 and quote = any($2::text[]) and registered', [chainId, erc])).map((r) => r.quote) : []);
+  const launched = new Set(erc.length ? (await deps.db.query('select token from launch_tokens where chain_id = $1 and token = any($2::text[])', [chainId, erc])).map((r) => r.token) : []);
+  const view = (a, source) => {
+    const { address, symbol, name, decimals, contractURI } = info(a);
+    const category = rewardTokenCategory(symbol, { quote: a === quote || quotes.has(a) });
+    return {
+      address,
+      symbol,
+      name,
+      decimals,
+      source,
+      category,
+      logo: category === 'crypto' ? null : pairIcon({ symbol }),
+      contractURI: contractURI ?? null,
+      placeLaunch: launched.has(a),
+    };
+  };
   return [
-    { ...info(quote), source: 'pair' },
-    { address: 'self', symbol: null, name: null, decimals: 18, source: 'self' },
-    ...targets.map((a) => ({ ...info(a), source: 'route' })),
-  ].map(({ address, symbol, name, decimals, source }) => ({ address, symbol, name, decimals, source }));
+    view(quote, 'pair'),
+    { address: 'self', symbol: null, name: null, decimals: 18, source: 'self', category: null, logo: null, contractURI: null, placeLaunch: true },
+    ...targets.map((a) => view(a, 'route')),
+  ];
 }
 
 async function getRewardTokens({ query: q }, deps) {

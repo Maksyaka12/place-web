@@ -1,8 +1,9 @@
-// Token or collection page: the asset, its market price, every campaign for it and who made them.
+// Project page (/token/:address, under Projects): a token or collection with its market price, its reward streams
+// and staking vaults, its snapshot campaigns and who made them, and its NFT collections.
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Layers, EyeOff, Rocket } from 'lucide-react';
+import { ArrowLeft, Layers, EyeOff, Rocket, Gift, Image as ImageIcon } from 'lucide-react';
 import { isAddress } from 'viem';
 import { Card, Tile, Alert, Button, EmptyState, SectionTitle, Badge } from '../../components/ui';
 import { useToken } from '../../../../place/hooks';
@@ -10,6 +11,8 @@ import { isTestnet, PLACE_CHAIN } from '../../../../place/chain';
 import { formatUtc, shortAddress } from '../../../../place/format';
 import { CampaignCard, AddressLink, CopyAddress, TokenIcon, QueryError, Skeleton } from './parts';
 import { viewStatus } from '../../../../place/status';
+import { useHubStreams, useStakingPrograms } from '../../../../launch/hooks.js';
+import { hubItems, HubCard } from '../../../../launch/ui/HubPage.jsx';
 
 /** USD price and market link from DexScreener (Base mainnet only; test tokens have no market). */
 function usePrice(address) {
@@ -34,6 +37,9 @@ export default function TokenPage() {
   const address = isAddress(raw || '', { strict: false }) ? raw.toLowerCase() : null;
   const q = useToken(address);
   const price = usePrice(address);
+  const streams = useHubStreams({ token: address }, { enabled: Boolean(address) });
+  const staking = useStakingPrograms({ token: address }, { enabled: Boolean(address) });
+  const rewards = useMemo(() => hubItems(streams.data?.streams, staking.data?.programs).filter((it) => it.target.address === address), [streams.data, staking.data, address]);
   const t = q.data;
   const now = Math.floor(Date.now() / 1000);
   const campaigns = useMemo(() => (t?.campaigns || []).map((c) => ({ ...c, status: viewStatus(c, now) })), [t, now]);
@@ -44,8 +50,8 @@ export default function TokenPage() {
   }, [campaigns]);
 
   const back = (
-    <Link to="/hub" className="pl-place-back">
-      <ArrowLeft size={14} /> Campaigns
+    <Link to="/projects" className="pl-place-back">
+      <ArrowLeft size={14} /> Projects
     </Link>
   );
   if (!address) {
@@ -139,13 +145,51 @@ export default function TokenPage() {
             )
           }
         />
-        <Tile label="Campaigns" value={<span className="mono">{campaigns.length}</span>} sub={`${live} live, ${upcoming} upcoming`} />
+        <Tile
+          label="Rewards and campaigns"
+          value={<span className="mono">{rewards.length + campaigns.length}</span>}
+          sub={`${live + rewards.filter((it) => it.status === 'live').length} live, ${upcoming + rewards.filter((it) => it.status === 'upcoming' || it.status === 'open').length} upcoming`}
+        />
         <Tile
           label={t.placeCollection ? 'Made on Place' : 'Creators'}
           value={<span className="mono">{t.placeCollection ? formatUtc(t.placeCollection.createdAt) : creators.length}</span>}
           sub={t.placeCollection ? <>by <AddressLink address={t.placeCollection.creator} /></> : 'Wallets that funded campaigns'}
         />
       </div>
+
+      <section className="pl-place-section">
+        <SectionTitle
+          title="Rewards and staking"
+          count={rewards.length}
+          right={
+            <Link className="pl-place-link pl-launch-small" to={`/hub?token=${address}`}>
+              Open in Rewards
+            </Link>
+          }
+        />
+        {streams.isLoading && staking.isLoading ? (
+          <Skeleton height={160} />
+        ) : rewards.length ? (
+          <div className="pl-vaults-grid">
+            {rewards.map((it) => (
+              <HubCard key={it.key} it={it} />
+            ))}
+          </div>
+        ) : (
+          <Card className="pl-place-empty-card">
+            <EmptyState
+              icon={<Gift size={28} />}
+              title={`No reward streams or staking for ${name} yet`}
+              description="Daily holder, trader and NFT holder rewards and staking vaults for this asset show up here"
+              action={
+                <Button as={Link} to={`/create?token=${address}`}>
+                  Create vault / campaign
+                </Button>
+              }
+            />
+          </Card>
+        )}
+      </section>
 
       <section className="pl-place-section">
         <SectionTitle title="Campaigns" count={campaigns.length} />
@@ -203,6 +247,19 @@ export default function TokenPage() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {!nft && (
+        <section className="pl-place-section">
+          <SectionTitle title="Collections" count={0} />
+          <Card className="pl-place-empty-card">
+            <EmptyState
+              icon={<ImageIcon size={28} />}
+              title={`No NFT collections for ${name} yet`}
+              description="NFT collections tied to this token will be listed here, with the creator's own collection marked as official"
+            />
+          </Card>
         </section>
       )}
     </div>

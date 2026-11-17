@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { BaseAppTopNav } from './BaseAppTopNav';
 import WalletToggle from '../../../components/wallet/WalletToggle';
 import { FEATURES } from '../../../config/features';
@@ -20,8 +20,6 @@ const PAGES = {
   LaunchNftPage: () => import('../../../launch/ui/LaunchNftPage'),
   CampaignPage: () => import('../pages/place/CampaignPage'),
   TokenPage: () => import('../pages/place/TokenPage'),
-  RewardsPage: () => import('../pages/place/RewardsPage'),
-  MyCampaignsPage: () => import('../pages/place/MyCampaignsPage'),
   AdminPage: () => import('../pages/place/AdminPage'),
   SwapPanel: () => import('./SwapPanel'),
   WalletPage: () => import('../../../components/wallet/WalletPage'),
@@ -31,6 +29,7 @@ const PAGES = {
   CreatorConsole: () => import('../../../launch/ui/CreatorConsole'),
   StakingPage: () => import('../../../launch/ui/StakingPage'),
   ProjectsPage: () => import('../../../launch/ui/ProjectsPage'),
+  RegisterTokenPage: () => import('../../../launch/ui/RegisterTokenPage'),
   StocksPage: () => import('../../../launch/ui/StocksPage'),
   ...(FEATURES.agents
     ? {
@@ -45,8 +44,6 @@ const HubCreatePage = lazy(PAGES.HubCreatePage);
 const LaunchNftPage = lazy(PAGES.LaunchNftPage);
 const CampaignPage = lazy(PAGES.CampaignPage);
 const TokenPage = lazy(PAGES.TokenPage);
-const RewardsPage = lazy(PAGES.RewardsPage);
-const MyCampaignsPage = lazy(PAGES.MyCampaignsPage);
 const AdminPage = lazy(PAGES.AdminPage);
 const SwapPanel = lazy(PAGES.SwapPanel);
 const WalletPage = lazy(PAGES.WalletPage);
@@ -59,6 +56,7 @@ const LaunchTokenPage = lazy(PAGES.LaunchTokenPage);
 const CreatorConsole = lazy(PAGES.CreatorConsole);
 const StakingPage = lazy(PAGES.StakingPage);
 const ProjectsPage = lazy(PAGES.ProjectsPage);
+const RegisterTokenPage = lazy(PAGES.RegisterTokenPage);
 const StocksPage = lazy(PAGES.StocksPage);
 
 let pagesWarm = false;
@@ -110,47 +108,27 @@ export function tabFromPath(pathname) {
   if (p.startsWith('/hub')) return 'hub';
   if (p.startsWith('/campaign/')) return 'campaign';
   if (p.startsWith('/token/')) return 'token';
-  if (p.startsWith('/rewards')) return 'rewards';
   if (p.startsWith('/create')) return 'create';
-  if (p.startsWith('/my')) return 'mine';
   if (p.startsWith('/admin')) return 'admin';
   if (p.startsWith('/swap')) return 'buy';
   if (p.startsWith('/staking')) return 'staking';
+  if (p.startsWith('/projects/register')) return 'register';
   if (p.startsWith('/projects')) return 'projects';
   for (const t of ['wallet', 'account', ...(FEATURES.agents ? AGENT_TABS : [])]) if (p.startsWith(`/${t}`)) return t;
   return 'dashboard';
 }
 
-/** The top-bar section a page belongs to. The Rewards hub groups the campaign, staking and claim pages. */
-const HUB_TABS = ['hub', 'campaign', 'token', 'rewards', 'create', 'mine', 'staking', 'projects', 'launch-nft'];
+/** The top-bar section a page belongs to. Rewards groups the campaign, staking and create pages; Projects groups
+ * the project pages (a token or collection with its campaigns) and Register token. */
+const HUB_TABS = ['hub', 'campaign', 'create', 'staking', 'launch-nft'];
+const PROJECT_TABS = ['projects', 'token', 'register'];
 export function sectionOf(tab) {
   if (tab === 'dashboard' || tab === 'launch-token' || tab === 'launch-new') return 'dashboard';
   if (tab === 'stocks') return 'stocks';
   if (tab === 'profile') return 'profile';
   if (HUB_TABS.includes(tab)) return 'hub';
+  if (PROJECT_TABS.includes(tab)) return 'projects';
   return null;
-}
-
-const HUB_LINKS = [
-  { tab: 'hub', label: 'All rewards', to: '/hub' },
-  { tab: 'rewards', label: 'My rewards', to: '/rewards' },
-  { tab: 'create', label: 'Create', to: '/create' },
-  { tab: 'mine', label: 'My campaigns', to: '/my' },
-  { tab: 'projects', label: 'Projects', to: '/projects' },
-];
-
-/** The Rewards hub's own section row, above each hub page (the type tabs of All rewards hold Staking). */
-function HubTabs({ tab }) {
-  const active = tab === 'campaign' || tab === 'token' || tab === 'staking' ? 'hub' : tab;
-  return (
-    <nav className="seg soft pl-hub-tabs" aria-label="Rewards hub">
-      {HUB_LINKS.map((l) => (
-        <Link key={l.to} to={l.to} aria-current={active === l.tab ? 'page' : undefined} aria-selected={active === l.tab}>
-          {l.label}
-        </Link>
-      ))}
-    </nav>
-  );
 }
 
 /** Width of the widest pages: dashboards, the token page, the launch form and the profile. */
@@ -164,14 +142,6 @@ function Page({ width = 1040, children }) {
   );
 }
 
-function HubPage({ tab, width = WIDE, children }) {
-  return (
-    <Page width={width}>
-      <HubTabs tab={tab} />
-      {children}
-    </Page>
-  );
-}
 
 export function BaseAppView() {
   const location = useLocation();
@@ -197,15 +167,14 @@ export function BaseAppView() {
   else if (tab === 'launch-new') content = <Page width={WIDE}><LaunchForm /></Page>;
   else if (tab === 'launch-token') content = <Page width={WIDE}><LaunchTokenPage /></Page>;
   else if (tab === 'profile') content = <Page width={WIDE}><CreatorConsole /></Page>;
-  else if (tab === 'hub') content = <HubPage tab={tab}><RewardsHub /></HubPage>;
-  else if (tab === 'campaign') content = <HubPage tab={tab}><CampaignPage /></HubPage>;
-  else if (tab === 'token') content = <HubPage tab={tab}><TokenPage /></HubPage>;
-  else if (tab === 'rewards') content = <HubPage tab={tab}><RewardsPage /></HubPage>;
-  else if (tab === 'create') content = <HubPage tab={tab}><HubCreatePage /></HubPage>;
+  else if (tab === 'hub') content = <Page width={WIDE}><RewardsHub /></Page>;
+  else if (tab === 'campaign') content = <Page width={WIDE}><CampaignPage /></Page>;
+  else if (tab === 'token') content = <Page width={WIDE}><TokenPage /></Page>;
+  else if (tab === 'create') content = <Page width={WIDE}><HubCreatePage /></Page>;
   else if (tab === 'launch-nft') content = <Page width={WIDE}><LaunchNftPage /></Page>;
-  else if (tab === 'mine') content = <HubPage tab={tab}><MyCampaignsPage /></HubPage>;
-  else if (tab === 'staking') content = <HubPage tab={tab}><StakingPage /></HubPage>;
-  else if (tab === 'projects') content = <HubPage tab={tab}><ProjectsPage /></HubPage>;
+  else if (tab === 'staking') content = <Page width={WIDE}><StakingPage /></Page>;
+  else if (tab === 'projects') content = <Page width={WIDE}><ProjectsPage /></Page>;
+  else if (tab === 'register') content = <Page width={WIDE}><RegisterTokenPage /></Page>;
   else if (tab === 'admin') content = <Page><AdminPage /></Page>;
   else if (tab === 'buy') {
     content = (

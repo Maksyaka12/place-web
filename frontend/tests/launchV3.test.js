@@ -127,6 +127,23 @@ test('predict before the 0.3.0 deploy: economics in contract format and the loca
   assert.deepEqual(opts.body.tokens.map((t) => [t.address, t.source]), [['eth', 'pair'], ['self', 'self'], [USDC, 'route']]);
   assert.equal(opts.body.tokens[2].symbol, 'USDC');
   assert.equal(opts.body.tokens[2].decimals, 6);
+  // Picker tabs and icons: ETH and USDC are majors with an icon; 'self' sits outside the tabs.
+  assert.deepEqual(opts.body.tokens.map((t) => t.category), ['majors', null, 'majors']);
+  assert.match(opts.body.tokens[0].logo, /^https:\/\//);
+  assert.match(opts.body.tokens[2].logo, /^https:\/\//);
+  assert.equal(opts.body.tokens[2].placeLaunch, false);
+  assert.equal(opts.body.tokens[1].placeLaunch, true);
+});
+
+test('reward token category: majors, tokenized stocks and other crypto', async () => {
+  const { rewardTokenCategory } = await import('../api/_lib/launch/rewards.js');
+  assert.equal(rewardTokenCategory('ETH'), 'majors');
+  assert.equal(rewardTokenCategory('cbBTC'), 'majors');
+  assert.equal(rewardTokenCategory('AAPLc'), 'stocks');
+  assert.equal(rewardTokenCategory('XYZQc', { quote: true }), 'stocks');
+  assert.equal(rewardTokenCategory('XYZQc'), 'crypto');
+  assert.equal(rewardTokenCategory('DEGEN'), 'crypto');
+  assert.equal(rewardTokenCategory(null), 'crypto');
 });
 
 test('predict after the deploy: mined salt, factory preview and address checks, createLaunch with 0.3.0 economics', async () => {

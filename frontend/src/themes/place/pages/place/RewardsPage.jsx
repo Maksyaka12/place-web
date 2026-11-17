@@ -1,9 +1,9 @@
-// My rewards: what a wallet can claim across every Place campaign and hub, Claim all in one
-// transaction per hub (the ready claimMany calls from GET claims), and the history.
+// Campaign rewards, under Rewards in the profile: what a wallet can claim across every Place campaign and hub,
+// Claim all in one transaction per hub (the ready claimMany calls from GET claims), and the history.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Gift, History, ExternalLink, Wallet } from 'lucide-react';
-import { PageHeader, Card, SectionTitle, EmptyState, Button, StatusPill } from '../../components/ui';
+import { Card, SectionTitle, EmptyState, Button, StatusPill } from '../../components/ui';
 import { useClaims, useCampaignMeta, useNow, usePlaceAccount, usePlaceTx } from '../../../../place/hooks';
 import { PLACE_HUB_ABI } from '../../../../place/abi';
 import { explorerTx } from '../../../../place/chain';
@@ -118,8 +118,13 @@ export default function RewardsPage() {
     );
 
   return (
-    <div className="pl-place-rewards">
-      <PageHeader title="My rewards" description="What your wallet can claim across every Place campaign, and what it already claimed" />
+    <div className="pl-launch-console-section pl-place-rewards">
+      <div className="pl-launch-console-head">
+        <div>
+          <h2 className="pl-launch-console-title">Campaign rewards</h2>
+          <p className="pl-launch-section-desc">One-off payouts from Rewards hub campaigns. Claim each before its window closes.</p>
+        </div>
+      </div>
 
       {!account ? (
         <Card className="pl-place-section">

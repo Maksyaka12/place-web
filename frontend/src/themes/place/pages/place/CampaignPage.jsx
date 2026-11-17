@@ -408,7 +408,7 @@ export default function CampaignPage() {
 
   const back = (
     <Link to="/hub" className="pl-place-back">
-      <ArrowLeft size={14} /> Campaigns
+      <ArrowLeft size={14} /> All rewards
     </Link>
   );
   if (q.isLoading) {

@@ -1,5 +1,6 @@
 // The pair picker of the launch form: a modal with search and Crypto / Stocks tabs over the factory's pairs.
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Check, ChevronDown } from 'lucide-react';
 import { EmptyState } from '../../themes/place/components/ui';
 import { isTestnet } from '../../place/chain';
@@ -40,9 +41,10 @@ export function PairPicker({ pairs, value, onPick, onClose }) {
       (p) => p.category === tab && (!s || p.symbol?.toLowerCase().includes(s) || p.name?.toLowerCase().includes(s) || String(p.address).includes(s))
     );
   }, [pairs, tab, q]);
-  return (
-    <div className="pw-modal-overlay" onClick={onClose} role="presentation">
-      <div className="pw-modal pl-launch-picker" role="dialog" aria-modal="true" aria-label="Choose a pair" onClick={(e) => e.stopPropagation()}>
+  // In the body: a transformed page (the Based slide-in) would make a fixed overlay scroll with the page.
+  return createPortal(
+    <div className="pw-theme pw-modal-overlay" onClick={onClose} role="presentation">
+      <div className="pw-card pw-modal pl-launch-picker" role="dialog" aria-modal="true" aria-label="Choose a pair" onClick={(e) => e.stopPropagation()}>
         <div className="pl-launch-picker-head">
           <span className="pl-launch-picker-title">Pair asset</span>
           <button type="button" className="pl-place-icon-btn" aria-label="Close" onClick={onClose}>
@@ -99,6 +101,7 @@ export function PairPicker({ pairs, value, onPick, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

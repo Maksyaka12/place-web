@@ -1,10 +1,10 @@
-// My campaigns: the creator's dashboard — every campaign with its status and claims, and the
+// Campaigns in the profile: the creator's dashboard — every campaign with its status and claims, and the
 // actions the hub allows at that moment: cancel, extend the claim window, take back an unpublished pool,
 // close; plus the NFT collections deployed through Place.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutDashboard, Sparkles, Wallet, EyeOff } from 'lucide-react';
-import { PageHeader, Card, SectionTitle, EmptyState, Button, ProgressBar, Badge } from '../../components/ui';
+import { Card, SectionTitle, EmptyState, Button, ProgressBar, Badge } from '../../components/ui';
 import { useCampaigns, useCollections, useCampaignMeta, useNow, usePlaceAccount, usePlaceTx } from '../../../../place/hooks';
 import { PLACE_HUB_ABI } from '../../../../place/abi';
 import { viewStatus } from '../../../../place/status';
@@ -149,8 +149,14 @@ export default function MyCampaignsPage() {
   );
 
   return (
-    <div className="pl-place-mine">
-      <PageHeader title="My campaigns" description="Campaigns and NFT collections you created, with what you can do with them right now" action={own ? create : null} />
+    <div className="pl-launch-console-section pl-place-mine">
+      <div className="pl-launch-console-head row">
+        <div>
+          <h2 className="pl-launch-console-title">Campaigns</h2>
+          <p className="pl-launch-section-desc">Campaigns and NFT collections you created, with what you can do with them right now</p>
+        </div>
+        {own ? create : null}
+      </div>
       {!creator ? (
         <Card className="pl-place-section">
           <EmptyState icon={<Wallet size={28} />} title="Log in to see your campaigns" description="Connect the wallet you created them with, or look up any creator" action={<ConnectButton />} />

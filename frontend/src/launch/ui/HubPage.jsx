@@ -141,6 +141,12 @@ function fromCampaign(c) {
   };
 }
 
+/** Every reward as hub items: streams (`launch/hub`), staking programs (`launch/staking`), snapshot campaigns. */
+export function hubItems(streams = [], programs = [], campaigns = []) {
+  const officialOf = (p) => streams.some((s) => s.token.address === p.stakingToken.address && s.funder === p.creator && s.source === 'creator');
+  return [...streams.map(fromStream), ...programs.map((p) => fromStaking(p, officialOf)), ...campaigns.filter((c) => !c.hidden).map(fromCampaign)];
+}
+
 function Tags({ it }) {
   const [label, tone] = SOURCE_BADGE[it.source] || [it.source, 'neutral'];
   return (
@@ -166,7 +172,7 @@ function Tags({ it }) {
   );
 }
 
-function HubCard({ it }) {
+export function HubCard({ it }) {
   const navigate = useNavigate();
   const open = () => navigate(it.to);
   return (
@@ -258,14 +264,7 @@ function HubList() {
   const staking = useStakingPrograms(address ? { account: address } : {});
   const snapshots = useCampaigns({ status: 'all', limit: 100 });
 
-  const items = useMemo(() => {
-    const officialOf = (p) => (streams.data?.streams || []).some((s) => s.token.address === p.stakingToken.address && s.funder === p.creator && s.source === 'creator');
-    return [
-      ...(streams.data?.streams || []).map(fromStream),
-      ...(staking.data?.programs || []).map((p) => fromStaking(p, officialOf)),
-      ...(snapshots.data?.campaigns || []).filter((c) => !c.hidden).map(fromCampaign),
-    ];
-  }, [streams.data, staking.data, snapshots.data]);
+  const items = useMemo(() => hubItems(streams.data?.streams, staking.data?.programs, snapshots.data?.campaigns), [streams.data, staking.data, snapshots.data]);
 
   const counts = useMemo(() => {
     const out = { all: 0 };

@@ -653,22 +653,28 @@
   background: var(--bg-bar);
   padding: 0 8px 0 24px;
 }
-/* Rewards hub section row */
-.pl-hub-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  width: fit-content;
-  max-width: 100%;
-  margin-bottom: 24px;
-}
-.pl-hub-tabs a {
-  text-decoration: none;
-}
-@media (max-width: 640px) {
-  .pl-hub-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+/* 1024-1279 px: five sections, search and the actions share a narrow bar, so the sections drop their icons */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .pl-topnav-inner {
+    gap: 10px;
+    padding: 0 16px;
+  }
+  .pl-topnav-link {
+    padding: 0 8px;
+  }
+  .pl-topnav-launch,
+  .pl-topnav-connect {
+    padding: 0 12px;
+  }
+  .pl-topnav-nft {
+    flex: none;
+  }
+  .pl-topnav-link svg,
+  .pl-topnav-search kbd {
+    display: none;
+  }
+  .pl-topnav-search {
+    min-width: 80px;
   }
 }
 /* Phone menu sheet */

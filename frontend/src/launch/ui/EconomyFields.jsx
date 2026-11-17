@@ -1,6 +1,7 @@
 // The Economy step of the launch form: Standard or Economy, buy and sell taxes, the five-bucket allocation (a ring
 // chart with sliders whose tracks show what other buckets hold), per-side breakdowns, and the rules of the
 // reward buckets (minimum holding, minimum daily volume, reward token).
+import { useState } from 'react';
 import { RotateCcw, Lock, Flame, Users, Gift, BarChart3 } from 'lucide-react';
 import { Badge } from '../../themes/place/components/ui';
 import {
@@ -13,6 +14,7 @@ import {
   taxSplit,
   tradePct,
 } from '../economy.js';
+import { RewardTokenButton, RewardTokenPicker } from './RewardTokenPicker.jsx';
 
 const SUPPLY = 1_000_000_000;
 
@@ -169,10 +171,11 @@ function TaxCard({ side, taxPct, allocation }) {
 
 /**
  * The Economy fields. `value`: { buyTax, sellTax, allocation, minHolding, minTraderVolume, rewardToken }.
- * `rewardTokens`: [{ address, symbol, source }] the reward token can be picked from.
+ * `rewardTokens`: the options of `launch/reward-tokens` ({ address, symbol, source, category, logo, ... }).
  */
 export function EconomyFields({ value, onChange, pair, symbol, rewardTokens, errors = {} }) {
   const set = (patch) => onChange({ ...value, ...patch });
+  const [picking, setPicking] = useState(false);
   const a = value.allocation;
   const total = allocationTotal(a);
   const rewards = a.holders > 0 || a.traders > 0;
@@ -258,21 +261,24 @@ export function EconomyFields({ value, onChange, pair, symbol, rewardTokens, err
       )}
 
       {rewards && (
-        <label className="pl-place-field">
+        <div className="pl-place-field">
           <span className="pl-launch-field-label">Reward token</span>
-          <select value={value.rewardToken} onChange={(e) => set({ rewardToken: e.target.value })}>
-            {rewardTokens.map((t) => (
-              <option key={t.address} value={t.address}>
-                {t.source === 'self' ? `${tokenLabel} (your token)` : t.symbol}
-                {t.source === 'pair' ? ' (pair asset, no swap)' : ''}
-              </option>
-            ))}
-          </select>
+          <RewardTokenButton token={rewardTokens.find((t) => t.address === value.rewardToken)} tokenLabel={tokenLabel} onClick={() => setPicking(true)} />
           <span className="pl-place-hint">
             Taxes arrive in {pair?.symbol || 'the pair asset'}. If you pick another token, the rewards contract swaps each day&apos;s rewards into it before
             they are shared, so holders and traders claim it directly.
           </span>
-        </label>
+          {picking && (
+            <RewardTokenPicker
+              tokens={rewardTokens}
+              value={value.rewardToken}
+              tokenLabel={tokenLabel}
+              pairSymbol={pair?.symbol}
+              onPick={(rewardToken) => set({ rewardToken })}
+              onClose={() => setPicking(false)}
+            />
+          )}
+        </div>
       )}
 
       <ul className="pl-launch-econ-notes">

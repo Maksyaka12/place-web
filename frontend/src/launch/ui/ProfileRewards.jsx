@@ -119,9 +119,6 @@ export function ProfileRewards({ address }) {
           />
         </Card>
       )}
-      <p className="pl-place-hint">
-        Rewards from Place hub campaigns are in <Link className="pl-place-link" to="/rewards">My rewards</Link>.
-      </p>
     </div>
   );
 }
