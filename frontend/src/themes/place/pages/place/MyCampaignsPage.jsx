@@ -214,7 +214,7 @@ export default function MyCampaignsPage() {
                   title="No collections yet"
                   description="Launch an NFT collection with a mint price, buyback and royalties"
                   action={
-                    <Button as={Link} to="/create/collection">
+                    <Button as={Link} to="/launch/nft">
                       Create a collection
                     </Button>
                   }

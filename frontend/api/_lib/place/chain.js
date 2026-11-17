@@ -209,9 +209,10 @@ export async function autoExclusions(client, { chainId, hub, holders, blockNumbe
  * Everything the engine needs for one campaign, in a single run (for scripts and small assets; the cron
  * job uses the pieces above step by step).
  */
-export async function collectHolders({ client, chainId, key, kind, target, hub, block, minBalance = 1n, fetchFn = fetch, onProgress = () => {} }) {
+export async function collectHolders({ client, chainId, key, kind, target, hub, block, minBalance = 1n, fetchFn = fetch, onProgress = () => {}, maxPages = Infinity }) {
   const into = { receivers: new Set(), tokenIds: kind === 'nft-holders' ? new Set() : null };
-  await collectTransfers({
+  const left = await collectTransfers({
+    maxPages,
     into,
     chainId,
     key,
@@ -220,6 +221,7 @@ export async function collectHolders({ client, chainId, key, kind, target, hub, 
     toBlock: block.number,
     fetchFn,
   });
+  if (left) throw new Error(`more than ${maxPages} pages of transfers: too large for one run`);
   onProgress(`${into.receivers.size} receivers${into.tokenIds ? `, ${into.tokenIds.size} token ids` : ''}`);
 
   const balances =

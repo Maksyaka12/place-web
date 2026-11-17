@@ -26,11 +26,14 @@ function ScrollToTop() {
 const shell = <BaseAppView />;
 const SHELL_PATHS = [
   '/',
+  '/stocks',
+  '/profile',
+  '/profile/:section',
+  '/hub',
   '/campaign/:hub/:id',
   '/token/:address',
   '/rewards',
   '/create',
-  '/create/:kind',
   '/my',
   '/admin',
   '/swap',
@@ -39,12 +42,16 @@ const SHELL_PATHS = [
   ...(FEATURES.agents ? ['/agents', '/settings', '/skill'] : []),
   '/staking',
   '/projects',
-  '/launch',
   '/launch/new',
+  '/launch/nft',
   '/launch/token/:address',
-  '/launch/profile',
-  '/launch/profile/:section',
 ];
+
+// Old launchpad links keep working: /launch/profile/fees opens /profile/fees.
+function LegacyProfileRedirect() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={`${pathname.replace(/^\/launch\/profile/, '/profile')}${search}`} replace />;
+}
 
 function DomainRouter() {
   useEffect(() => {
@@ -56,6 +63,10 @@ function DomainRouter() {
       {SHELL_PATHS.map((path) => (
         <Route key={path} path={path} element={shell} />
       ))}
+      <Route path="/launch" element={<Navigate to="/" replace />} />
+      <Route path="/create/collection" element={<Navigate to="/launch/nft" replace />} />
+      <Route path="/create/:kind" element={<Navigate to="/create" replace />} />
+      <Route path="/launch/profile/*" element={<LegacyProfileRedirect />} />
       <Route path="/docs" element={docs} />
       <Route path="/docs/:slug" element={docs} />
       <Route path="*" element={<Navigate to="/" replace />} />

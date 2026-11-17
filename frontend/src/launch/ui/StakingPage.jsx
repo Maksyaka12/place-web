@@ -1,13 +1,12 @@
-// Staking (/staking): PlaceStaking programs. Anyone stakes the program's token for a share of
-// a fixed reward per epoch; rewards of an epoch are claimable once it ends. Programs paid from a Place token's
-// community fund are made in the creator console (fundStaking); this page lists every program and runs stake,
-// withdraw and claim. `?program=<id>` opens one program.
-import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Coins, Lock, Rocket, Clock } from 'lucide-react';
+// A staking vault (/staking?program=<id>): one PlaceStaking program with stake, position, claim and withdraw. Anyone
+// stakes the program's token for a share of a fixed reward per epoch; rewards of an epoch are claimable once it ends.
+// The list of vaults is the Staking tab of the Rewards hub (/hub?type=staking); /staking without a program opens it.
+import { useState } from 'react';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Lock, Clock, ArrowLeft } from 'lucide-react';
 import { maxUint256 } from 'viem';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Badge, EmptyState, PageHeader, Tile, Alert } from '../../themes/place/components/ui';
+import { Card, Tile } from '../../themes/place/components/ui';
 import { TxButton, TxResult, ConnectButton, QueryError, Skeleton, AddressLink } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx, useNow } from '../../place/hooks';
 import { placeClient } from '../../place/chain';
@@ -17,58 +16,8 @@ import { ERC20_ABI } from '../swap.js';
 import { useStakingPrograms, useStakingPosition, launchKeys } from '../hooks.js';
 import { launchTokenPath } from './parts.jsx';
 import { compact } from '../format.js';
+import { num, duration, PairLogos, PhaseBadge, CopyId } from './vaults.jsx';
 
-const STATUS = { live: 'Live', open: 'Open', upcoming: 'Upcoming', ended: 'Ended' };
-const num = (raw, decimals, max = 4) => Number(formatAmount(raw ?? 0, decimals, { maxDecimals: max }).replace(/,/g, ''));
-const duration = (s) => (s % 86400 === 0 ? `${s / 86400}d` : s % 3600 === 0 ? `${s / 3600}h` : `${Math.round(s / 60)}m`);
-
-function ProgramCard({ p, active, onOpen }) {
-  return (
-    <Card hover className={`pl-staking-card ${active ? 'active' : ''}`.trim()} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen()}>
-      <div className="pl-staking-card-head">
-        <span className="pl-staking-icon">
-          <Coins size={18} />
-        </span>
-        <div className="pl-staking-card-title">
-          <span className="pl-launch-strong">Stake {p.stakingToken.symbol}</span>
-          <span className="pl-launch-muted pl-launch-small">
-            earn {p.rewardToken.symbol} · {p.epochCount} × {duration(p.epochDuration)}
-          </span>
-        </div>
-        <Badge tone={p.status === 'live' ? 'success' : p.status === 'ended' ? 'danger' : p.status === 'open' ? 'accent' : 'neutral'} pill>
-          {STATUS[p.status]}
-        </Badge>
-      </div>
-      <dl className="pl-place-kv pl-staking-kv">
-        <div>
-          <dt>Per epoch</dt>
-          <dd className="mono">
-            {compact(num(p.rewardPerEpoch, p.rewardToken.decimals))} {p.rewardToken.symbol}
-          </dd>
-        </div>
-        <div>
-          <dt>Staked</dt>
-          <dd className="mono">
-            {compact(num(p.totalStaked, p.stakingToken.decimals))} {p.stakingToken.symbol}
-          </dd>
-        </div>
-        <div>
-          <dt>Stakers</dt>
-          <dd className="mono">{p.stakers}</dd>
-        </div>
-      </dl>
-      <div className="pl-staking-tags">
-        {p.launchedOnPlace && (
-          <Badge tone="accent">
-            <Rocket size={11} /> Launched on Place
-          </Badge>
-        )}
-        {p.fromLaunchVault && <Badge tone="neutral">Community fund</Badge>}
-        {p.position && p.position.staked !== '0' && <Badge tone="success">You stake</Badge>}
-      </div>
-    </Card>
-  );
-}
 
 function useTokenBalance(token, account) {
   return useQuery({
@@ -237,7 +186,7 @@ function ProgramDetail({ p, now }) {
           <div>
             <dt>Funded by</dt>
             <dd className="pl-launch-inline">
-              {p.fromLaunchVault ? 'Community fund of the token' : 'A wallet'} <AddressLink address={p.creator} />
+              {p.fromLaunchVault ? 'Community Pool of the token' : 'A wallet'} <AddressLink address={p.creator} />
             </dd>
           </div>
           <div>
@@ -259,55 +208,44 @@ function ProgramDetail({ p, now }) {
 }
 
 export default function StakingPage() {
-  const { address } = usePlaceAccount();
   const now = useNow(10_000);
-  const [params, setParams] = useSearchParams();
-  const [filter, setFilter] = useState('all');
-  const q = useStakingPrograms(address ? { account: address } : {});
-  const programs = useMemo(() => q.data?.programs || [], [q.data]);
-  const shown = programs.filter((p) => (filter === 'mine' ? p.position && p.position.staked !== '0' : filter === 'active' ? p.status !== 'ended' : true));
-  const open = programs.find((p) => p.id === params.get('program'));
-
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const id = params.get('program');
+  const q = useStakingPrograms({}, { enabled: Boolean(id) });
+  if (!id) return <Navigate to="/hub?type=staking" replace />;
+  const open = (q.data?.programs || []).find((p) => p.id === id);
+  const back = (
+    <button type="button" className="pl-place-back" onClick={() => navigate('/hub?type=staking')}>
+      <ArrowLeft size={14} /> All staking vaults
+    </button>
+  );
+  if (q.isLoading) return <Skeleton height={240} />;
+  if (q.error) return <QueryError error={q.error} retry={q.refetch} />;
+  if (!open) {
+    return (
+      <div className="pl-place-stack pl-staking">
+        {back}
+        <Card>
+          <p className="pl-launch-muted">This vault is not indexed yet, or the ID is wrong.</p>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="pl-place-stack pl-staking">
-      <PageHeader title="Staking" description="Stake tokens for a fixed reward every epoch, from creators and community funds of Place tokens" />
-      <Alert tone="info" icon={<Coins size={15} />}>
-        Creators of Place tokens start programs from their community fund in the creator console. Every program pays Place a 5% fee on top of its rewards.
-      </Alert>
-      <div className="seg soft" role="tablist" aria-label="Programs">
-        {[
-          ['all', 'All'],
-          ['active', 'Active'],
-          ['mine', 'Mine'],
-        ].map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={filter === id} onClick={() => setFilter(id)} disabled={id === 'mine' && !address}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {q.isLoading ? (
-        <Skeleton height={160} />
-      ) : q.error ? (
-        <QueryError error={q.error} retry={q.refetch} />
-      ) : shown.length ? (
-        <div className="pl-place-grid">
-          {shown.map((p) => (
-            <ProgramCard key={p.id} p={p} active={open?.id === p.id} onOpen={() => setParams({ program: p.id })} />
-          ))}
+      {back}
+      <div className="pl-vault-detail-head">
+        <PairLogos a={open.stakingToken} b={open.rewardToken} size={40} />
+        <div className="pl-vault-title">
+          <h1 className="pl-vault-detail-title">
+            Stake {open.stakingToken.symbol} · Earn {open.rewardToken.symbol}
+          </h1>
+          <CopyId id={open.id} title="Copy vault ID" />
         </div>
-      ) : (
-        <Card className="pl-place-empty-card">
-          <EmptyState icon={<Coins size={28} />} title={filter === 'mine' ? 'You stake in no program yet' : 'No staking programs yet'} description="Programs appear here as soon as a creator funds one." />
-        </Card>
-      )}
-      {open && (
-        <>
-          <span className="pl-launch-section-title">
-            {open.stakingToken.symbol} → {open.rewardToken.symbol}
-          </span>
-          <ProgramDetail p={open} now={now} />
-        </>
-      )}
+        <PhaseBadge status={open.status} />
+      </div>
+      <ProgramDetail p={open} now={now} />
     </div>
   );
 }

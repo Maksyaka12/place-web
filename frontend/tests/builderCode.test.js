@@ -7,6 +7,7 @@ import { Attribution } from 'ox/erc8021';
 import { BUILDER_CODE, DATA_SUFFIX, appendBuilderSuffix } from '../src/config/builderCode.js';
 import { makePublisher } from '../api/_lib/place/publisher.js';
 import { makeKeeperWallet } from '../api/_lib/launch/keeper.js';
+import { REWARDS_DISTRIBUTOR_ABI } from '../src/launch/abi.js';
 
 const KEY = `0x${'11'.repeat(32)}`; // throwaway test key, never funded
 const ADDR = `0x${'22'.repeat(20)}`;
@@ -62,7 +63,7 @@ test('the launch keeper signs vault calls with the Place suffix', async (t) => {
   const sent = mockRpc(t);
   const readClient = { waitForTransactionReceipt: async () => ({ status: 'success', gasUsed: 21000n }) };
   const keeper = makeKeeperWallet({ chainId: 84532, alchemyKey: 'test', privateKey: KEY, readClient });
-  await keeper.send(ADDR, 'process', 100_000n);
+  await keeper.send({ address: ADDR, abi: REWARDS_DISTRIBUTOR_ABI, functionName: 'closeStreams', args: [[`0x${'44'.repeat(32)}`]] }, 100_000n);
   assert.equal(sent.length, 1);
-  assert.ok(sent[0].data.endsWith(DATA_SUFFIX.slice(2)), 'process() calldata ends with the Builder Code suffix');
+  assert.ok(sent[0].data.endsWith(DATA_SUFFIX.slice(2)), 'closeStreams calldata ends with the Builder Code suffix');
 });

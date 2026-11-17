@@ -407,8 +407,8 @@ export default function CampaignPage() {
   const now = useNow(1000);
 
   const back = (
-    <Link to="/" className="pl-place-back">
-      <ArrowLeft size={14} /> Explore
+    <Link to="/hub" className="pl-place-back">
+      <ArrowLeft size={14} /> Campaigns
     </Link>
   );
   if (q.isLoading) {

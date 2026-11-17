@@ -13,13 +13,26 @@ import {
   ANNOUNCEMENT_REGISTRY_ABI,
   PLACE_STAKING_ABI,
   REWARD_TOKEN_REGISTRY_ABI,
+  REWARDS_DISTRIBUTOR_ABI,
+  COMMUNITY_VAULT_ABI,
+  FEE_ESCROW_ABI,
 } from '../src/launch/abi.js';
-import { LEGACY_FACTORY_EVENTS, LEGACY_OPERATIONS_EVENTS, LEGACY_CREATOR_VAULT_ABI } from '../src/launch/abi.legacy.js';
-import { launchReleases } from '../src/launch/deployments.js';
+import {
+  LEGACY_FACTORY_EVENTS,
+  LEGACY_OPERATIONS_EVENTS,
+  LEGACY_CREATOR_VAULT_ABI,
+  V020_FACTORY_EVENTS,
+  V020_OPERATIONS_EVENTS,
+  V020_HOOK_EVENTS,
+  V020_CREATOR_VAULT_ABI,
+} from '../src/launch/abi.legacy.js';
+import { launchReleases, launchDeployment } from '../src/launch/deployments.js';
 
 export const CHAIN = 84532;
-// The L2 launches below were made with 0.1.0, now the legacy release; CUR is the current release (0.2.0).
-export const CUR = launchReleases(CHAIN)[0];
+// The L2 launches below were made with 0.1.0; CUR is the 0.2.0 release (L5 run). Both are legacy now. NEXT is
+// CUR is the 0.2.0 release; tests of the current one (0.3.0) give it fixture addresses with deploy030() first.
+export const CUR = launchReleases(CHAIN).find((r) => r.version === '0.2.0-testnet');
+export const NEXT = launchDeployment(CHAIN);
 export const D = launchReleases(CHAIN).find((r) => r.version === '0.1.0-testnet');
 export const ETH = '0x0000000000000000000000000000000000000000';
 export const DEAD = '0x000000000000000000000000000000000000dead';
@@ -44,7 +57,10 @@ export const SQRT = {
   ercAfterDev: 39559965594138685917755313364207274137n,
 };
 
+// Older generations first: a log takes the first event whose name and fields match its args.
 const ABIS = [
+  ...V020_FACTORY_EVENTS, ...V020_OPERATIONS_EVENTS, ...V020_HOOK_EVENTS, ...V020_CREATOR_VAULT_ABI,
+  ...REWARDS_DISTRIBUTOR_ABI, ...COMMUNITY_VAULT_ABI, ...FEE_ESCROW_ABI,
   ...LAUNCH_FACTORY_ABI, ...LAUNCH_OPERATIONS_EVENTS, ...LAUNCH_HOOK_ABI, ...CREATOR_VAULT_ABI, ...LAUNCH_TOKEN_ABI, ...POOL_MANAGER_ABI,
   ...ANNOUNCEMENT_REGISTRY_ABI, ...PLACE_STAKING_ABI, ...REWARD_TOKEN_REGISTRY_ABI, ...LEGACY_FACTORY_EVENTS, ...LEGACY_OPERATIONS_EVENTS, ...LEGACY_CREATOR_VAULT_ABI,
 ].filter((x) => x.type === 'event');
@@ -205,4 +221,44 @@ export async function freshDb() {
   const db = pgliteAdapter(new PGlite());
   await migrate(db);
   return db;
+}
+
+// Made-up 0.3.0 addresses for tests until the release is deployed (V6). PlaceStaking is reused from 0.2.0.
+const a3 = (tail) => `0x3${'0'.repeat(35)}${tail}`;
+export const V3 = {
+  startBlock: 59_000_000n,
+  factory: a3('0f01'),
+  hook: a3('0acc'),
+  feeEscrow: a3('0e5c'),
+  creatorVaultImplementation: a3('0c01'),
+  communityVaultImplementation: a3('0c02'),
+  rewardsDistributor: a3('0d15'),
+  rewardTokenRegistry: a3('0a11'),
+  staking: '0x1390719ddd7a3f597abcdd8b48bcc7dc465220df',
+  xRecipientRegistry: a3('0b0b'),
+  launchBuyAdapter: a3('0bad'),
+  announcementRegistry: a3('0a00'),
+  tokenDeployer: a3('0de9'),
+};
+
+/** Gives the current release (0.3.0) the V3 test addresses; returns a function that restores the placeholders. */
+/** Puts the current release back to its state before the deploy: `deployed: false` and null addresses. */
+export function undeploy030() {
+  const d = launchDeployment(CHAIN);
+  const keys = [...Object.keys(V3), 'deployed'];
+  const saved = Object.fromEntries(keys.map((k) => [k, d[k]]));
+  Object.assign(d, Object.fromEntries(Object.keys(V3).map((k) => [k, null])), { deployed: false });
+  return () => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete d[k];
+      else d[k] = saved[k];
+    }
+  };
+}
+
+export function deploy030() {
+  const d = launchDeployment(CHAIN);
+  const saved = Object.fromEntries([...Object.keys(V3), 'deployed'].map((k) => [k, d[k]]));
+  Object.assign(d, V3, { deployed: true });
+  return () => Object.assign(d, saved);
 }

@@ -44,8 +44,8 @@ export default function TokenPage() {
   }, [campaigns]);
 
   const back = (
-    <Link to="/" className="pl-place-back">
-      <ArrowLeft size={14} /> Explore
+    <Link to="/hub" className="pl-place-back">
+      <ArrowLeft size={14} /> Campaigns
     </Link>
   );
   if (!address) {
@@ -77,7 +77,7 @@ export default function TokenPage() {
   const name = t.name || t.symbol || shortAddress(address);
   const live = campaigns.filter((c) => c.status === 'live').length;
   const upcoming = campaigns.filter((c) => c.status === 'scheduled' || c.status === 'snapshotting').length;
-  const createLink = `/create?kind=${nft ? 'nft-holders' : 'token-holders'}&target=${address}`;
+  const createLink = `/create?type=${nft ? 'nft' : 'holders'}&token=${address}`;
   const order = { live: 0, scheduled: 1, snapshotting: 1, refundable: 2 };
   const sorted = [...campaigns].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
 

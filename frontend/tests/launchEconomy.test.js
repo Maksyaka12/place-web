@@ -173,9 +173,10 @@ test('token page: 0.2.0 economics, burn history with transactions, community fun
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const { token, burns, fund, staking, campaigns } = r.body;
   assert.equal(token.version, '0.2.0-testnet');
-  assert.equal(token.legacy, false);
+  assert.equal(token.legacy, true); // 0.3.0 is the current release now
+  assert.equal(token.generation, 2);
   assert.equal(token.hook, CUR.hook);
-  assert.deepEqual(token.economics, { version: '0.2.0-testnet', legacy: false, burnBps: 3000, communityBps: 5000, creatorBps: 2000, xShares: [] });
+  assert.deepEqual(token.economics, { version: '0.2.0-testnet', legacy: true, generation: 2, burnBps: 3000, communityBps: 5000, creatorBps: 2000, xShares: [] });
   assert.equal(burns.count, 1);
   assert.equal(burns.totalTokens, String(15606n * e18));
   assert.equal(burns.list[0].caller, TRADER);
@@ -205,7 +206,7 @@ test('creator panel (0.2.0): baskets, claim, process dry run, default campaign r
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const t = r.body.tokens.find((x) => x.token.address === PL5B.token);
   const v = t.vault;
-  assert.equal(v.version, 'current');
+  assert.equal(v.version, 'v2');
   assert.deepEqual(v.economics, { burnBps: 3000, communityBps: 5000, creatorBps: 2000 });
   assert.equal(v.claim.paid, '123');
   assert.equal(decodeFunctionData({ abi: CREATOR_VAULT_ABI, data: v.claim.tx.data }).functionName, 'claim');
@@ -283,7 +284,7 @@ test('keeper: process() once a day when due, default campaign only after 30 days
   const wallet = {
     address: '0x000000000000000000000000000000000000beef',
     estimate: async () => gas,
-    send: async (vault, fn, g) => {
+    send: async ({ address: vault, functionName: fn }, g) => {
       sent.push([vault, fn, g]);
       return { hash: `0x${'ab'.repeat(32)}`, status: 'success', gasUsed: 250_000n };
     },

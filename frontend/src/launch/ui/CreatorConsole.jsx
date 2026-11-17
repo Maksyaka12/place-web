@@ -1,6 +1,7 @@
-// Creator console (/launch/profile/:section): the public profile (signed by the wallet, stored by the API),
-// the tokens this wallet launched, and fees. 0.2.0 tokens get VaultPanel (fees, daily burn, community fund
-// campaigns and staking, raising the shares); 0.1.0 tokens keep FeeRow (claim with buyback, rewards pool).
+// Profile (/profile/:section): Rewards (daily holder and trader rewards over every token, Claim / Claim all),
+// Launches (tokens this wallet launched), Fees and Profile settings (signed by the wallet, stored by the API).
+// Fees per release: 0.3.0 → VaultPanelV3 (creator revenue, Community Pool campaigns, automatic campaign);
+// 0.2.0 → VaultPanel (fees, daily burn, community fund, raising the shares); 0.1.0 → FeeRow (buyback, rewards pool).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,11 +21,15 @@ import { uploadImage, imageProblem } from '../image.js';
 import { ipfsUrl } from '../../place/format';
 import { TokenLogo, launchTokenPath, launchNewPath, consolePath } from './parts.jsx';
 import { VaultPanel } from './VaultPanel.jsx';
+import { VaultPanelV3 } from './VaultPanelV3.jsx';
+import { ProfileRewards } from './ProfileRewards.jsx';
 import { money } from './TokenCard.jsx';
 import { age } from '../format.js';
+import { tokenEconomy } from '../economy.js';
 import { useLaunchLive, useLiveTokens } from '../live.js';
 
 const SECTIONS = [
+  { id: 'rewards', label: 'Rewards', Icon: Gift },
   { id: 'launches', label: 'Launches', Icon: Rocket },
   { id: 'fees', label: 'Fees', Icon: Coins },
   { id: 'settings', label: 'Profile settings', Icon: UserRound },
@@ -253,7 +258,10 @@ function Launches({ address, now }) {
                 </span>
               </div>
               <div className="pl-launch-launch-foot">
-                <Badge tone="accent">Launched by you</Badge>
+                <span className="pl-launch-inline">
+                  <Badge tone="accent">Launched by you</Badge>
+                  <ReleaseBadge t={t} />
+                </span>
                 <span className="pl-launch-muted pl-launch-age">
                   <Clock size={12} />
                   Created {age(t.createdAt, now)} ago
@@ -280,6 +288,15 @@ function Launches({ address, now }) {
       )}
     </div>
   );
+}
+
+/** Standard / Economy for 0.3.0, the release for older tokens. */
+function ReleaseBadge({ t }) {
+  if (t.generation >= 3) {
+    const e = tokenEconomy(t);
+    return <Badge tone="neutral">{e?.type === 'economy' ? `Economy ${e.buyTax}/${e.sellTax}%` : 'Standard'}</Badge>;
+  }
+  return <Badge tone="neutral">{t.version || (t.generation === 2 ? '0.2.0' : '0.1.0')}</Badge>;
 }
 
 // ─────────────────────────────── fees ───────────────────────────────
@@ -442,7 +459,7 @@ function Fees({ address }) {
         <div>
           <h2 className="pl-launch-console-title">Fees</h2>
           <p className="pl-launch-section-desc">
-            Your 0.7% of every trade waits in each token&apos;s vault, split into your fees, the daily burn and the community fund.
+            Your share of every trade waits in each token&apos;s vault. Claim it here, and turn the Community Pool into rewards for your holders and traders.
           </p>
         </div>
         {anyLegacy && <div className="pl-launch-slippage">
@@ -463,7 +480,13 @@ function Fees({ address }) {
       ) : mine.length ? (
         <div className="pl-launch-fees">
           {mine.map((item) =>
-            item.vault.version === 'legacy' ? <FeeRow key={item.token.address} item={item} /> : <VaultPanel key={item.token.address} item={item} PayoutForm={PayoutForm} />
+            item.vault.version === 'legacy' ? (
+              <FeeRow key={item.token.address} item={item} />
+            ) : item.vault.version === 'v3' ? (
+              <VaultPanelV3 key={item.token.address} item={item} PayoutForm={PayoutForm} />
+            ) : (
+              <VaultPanel key={item.token.address} item={item} PayoutForm={PayoutForm} />
+            )
           )}
         </div>
       ) : (
@@ -490,7 +513,7 @@ function Fees({ address }) {
 export default function CreatorConsole() {
   useLaunchLive();
   const { section } = useParams();
-  const active = SECTIONS.some((s) => s.id === section) ? section : 'launches';
+  const active = SECTIONS.some((s) => s.id === section) ? section : 'rewards';
   const { address } = usePlaceAccount();
   const now = useNow(60_000);
   const profileQ = useProfile(address);
@@ -500,14 +523,14 @@ export default function CreatorConsole() {
     return (
       <div className="pl-launch">
         <header className="page-header">
-          <h1 className="page-title">Creator console</h1>
-          <p className="page-desc">Your launches, their fees and your public profile</p>
+          <h1 className="page-title">Profile</h1>
+          <p className="page-desc">Your rewards, your launches, their fees and your public profile</p>
         </header>
         <Card className="pl-place-empty-card">
           <EmptyState
             icon={<UserRound size={28} />}
             title="Connect your wallet"
-            description="The console shows the tokens this wallet launched, lets you claim their fees and edit your creator profile."
+            description="Your profile shows the rewards this wallet can claim, the tokens it launched and their fees, and lets you edit your public profile."
             action={<ConnectButton />}
           />
         </Card>
@@ -517,14 +540,14 @@ export default function CreatorConsole() {
 
   return (
     <div className="pl-launch pl-launch-console">
-      <Link to="/launch" className="pl-place-back">
+      <Link to="/" className="pl-place-back">
         <ArrowLeft size={14} />
         Launchpad
       </Link>
       <header className="pl-launch-console-top">
         <Avatar profile={profile} address={address} />
         <div className="pl-launch-console-id">
-          <h1 className="page-title">{profile?.name || 'Creator console'}</h1>
+          <h1 className="page-title">{profile?.name || 'Profile'}</h1>
           <span className="pl-launch-inline start">
             <a className="pl-place-link mono" href={explorerAddress(address)} target="_blank" rel="noopener noreferrer">
               {shortAddress(address)}
@@ -539,7 +562,7 @@ export default function CreatorConsole() {
       </header>
 
       <div className="pl-launch-console-cols">
-        <div className="pl-launch-console-nav" role="navigation" aria-label="Creator console">
+        <div className="pl-launch-console-nav" role="navigation" aria-label="Profile">
           {SECTIONS.map(({ id, label, Icon }) => (
             <NavLink key={id} to={consolePath(id)} className={() => `pl-launch-console-link-item ${active === id ? 'active' : ''}`.trim()}>
               <Icon size={16} strokeWidth={1.75} />
@@ -552,6 +575,8 @@ export default function CreatorConsole() {
             <ProfileSettings key={address} address={address} profile={profile} />
           ) : active === 'fees' ? (
             <Fees address={address} />
+          ) : active === 'rewards' ? (
+            <ProfileRewards address={address} />
           ) : (
             <Launches address={address} now={now} />
           )}

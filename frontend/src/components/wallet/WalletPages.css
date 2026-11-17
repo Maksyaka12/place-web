@@ -483,15 +483,9 @@
   font-family: var(--pw-font);
 }
 
-.pw-menu-up {
-  left: 0;
+.pw-menu-down {
   right: 0;
-  bottom: calc(100% + 8px);
-}
-
-.pw-menu-right {
-  left: calc(100% + 10px);
-  bottom: 0;
+  top: calc(100% + 8px);
 }
 
 .pw-menu button {

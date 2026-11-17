@@ -18,6 +18,7 @@ export const launchKeys = {
   holders: (a) => ['place', PLACE_CHAIN_ID, 'launch', 'holders', lc(a)],
   stats: () => ['place', PLACE_CHAIN_ID, 'launch', 'stats'],
   pairs: () => ['place', PLACE_CHAIN_ID, 'launch', 'pairs'],
+  stocks: () => ['place', PLACE_CHAIN_ID, 'launch', 'stocks'],
   creator: (a, s) => ['place', PLACE_CHAIN_ID, 'launch', 'creator', lc(a), s],
   profile: (a) => ['place', PLACE_CHAIN_ID, 'launch', 'profile', lc(a)],
   balances: (a, t, q) => ['place', PLACE_CHAIN_ID, 'launch', 'balances', lc(a), lc(t), lc(q)],
@@ -25,6 +26,11 @@ export const launchKeys = {
   staking: (q) => ['place', PLACE_CHAIN_ID, 'launch', 'staking', q],
   position: (id, a) => ['place', PLACE_CHAIN_ID, 'launch', 'staking-position', id, lc(a)],
   fundQuote: (q) => ['place', PLACE_CHAIN_ID, 'launch', 'fund-quote', q],
+  rewardTokens: (quote) => ['place', PLACE_CHAIN_ID, 'launch', 'reward-tokens', lc(quote)],
+  rewards: (a, t) => ['place', PLACE_CHAIN_ID, 'launch', 'rewards', lc(a), lc(t) ?? null],
+  hub: (q) => ['place', PLACE_CHAIN_ID, 'launch', 'hub', q],
+  hubStream: (id, a) => ['place', PLACE_CHAIN_ID, 'launch', 'hub-stream', id, lc(a) ?? null],
+  hubAsset: (a, acc) => ['place', PLACE_CHAIN_ID, 'launch', 'hub-asset', lc(a), lc(acc) ?? null],
 };
 
 export const launchD = () => launchDeployment(PLACE_CHAIN_ID);
@@ -86,6 +92,30 @@ export function useLaunchStats() {
 
 export function usePairs() {
   return useQuery({ queryKey: launchKeys.pairs(), queryFn: ({ signal }) => launchApi.pairs(signal), staleTime: 60_000 });
+}
+
+export function useStocks() {
+  return useQuery({ queryKey: launchKeys.stocks(), queryFn: ({ signal }) => launchApi.stocks(signal), staleTime: 120_000 });
+}
+
+/** 0.3.0: what a launch on this pair may pay rewards in (the pair, the token itself, listed routes). */
+export function useRewardTokens(quote) {
+  return useQuery({
+    queryKey: launchKeys.rewardTokens(quote),
+    queryFn: ({ signal }) => launchApi.rewardTokens(quote, signal),
+    enabled: Boolean(quote),
+    staleTime: 60_000,
+  });
+}
+
+/** 0.3.0: claimable holder / trader rewards of an account (all tokens, or one), with claimMany transactions. */
+export function useRewards(account, token) {
+  return useQuery({
+    queryKey: launchKeys.rewards(account, token),
+    queryFn: ({ signal }) => launchApi.rewards(account, signal, token),
+    enabled: Boolean(account),
+    refetchInterval: 60_000,
+  });
 }
 
 export function useCreator(address, slippageBps = 300) {
@@ -201,6 +231,38 @@ export function useFundQuote(q) {
     queryFn: ({ signal }) => launchApi.fundQuote(q, signal),
     enabled: Boolean(q?.token && q?.amountIn && q.amountIn !== '0'),
     staleTime: 10_000,
+    retry: 0,
+  });
+}
+
+/** Every reward stream in the Rewards hub (with the account's claims and funded streams when given). */
+export function useHubStreams(q = {}, options = {}) {
+  return useQuery({
+    queryKey: launchKeys.hub(q),
+    queryFn: ({ signal }) => launchApi.hub(q, signal),
+    placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
+    ...options,
+  });
+}
+
+/** One stream of the Rewards hub with its days and actions. */
+export function useHubStream(id, account) {
+  return useQuery({
+    queryKey: launchKeys.hubStream(id, account),
+    queryFn: ({ signal }) => launchApi.hubStream(account ? { id, account } : { id }, signal),
+    enabled: Boolean(id),
+    refetchInterval: 30_000,
+  });
+}
+
+/** What a token or collection allows in the create form (types, Community Pool). */
+export function useHubAsset(address, account) {
+  return useQuery({
+    queryKey: launchKeys.hubAsset(address, account),
+    queryFn: ({ signal }) => launchApi.hubAsset(account ? { address, account } : { address }, signal),
+    enabled: Boolean(address),
+    staleTime: 30_000,
     retry: 0,
   });
 }

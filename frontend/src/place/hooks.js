@@ -18,7 +18,6 @@ export const placeKeys = {
   claims: (address) => ['place', PLACE_CHAIN_ID, 'claims', lc(address)],
   token: (address) => ['place', PLACE_CHAIN_ID, 'token', lc(address)],
   collections: (q) => ['place', PLACE_CHAIN_ID, 'collections', q],
-  holders: (q) => ['place', PLACE_CHAIN_ID, 'holders', q],
   ipfs: (uri) => ['ipfs', uri],
 };
 
@@ -45,17 +44,6 @@ export function useToken(address) {
 
 export function useCollections(q = {}, options = {}) {
   return useQuery({ queryKey: placeKeys.collections(q), queryFn: ({ signal }) => placeApi.collections(q, signal), ...options });
-}
-
-/** Holder preview for the Create form; reads the chain, so it only runs on request (`enabled`). */
-export function useHolders(q, enabled) {
-  return useQuery({
-    queryKey: placeKeys.holders(q),
-    queryFn: ({ signal }) => placeApi.holders(q, signal),
-    enabled: Boolean(enabled && q?.target),
-    staleTime: 60_000,
-    retry: 0,
-  });
 }
 
 export function useIpfsJson(uri, options = {}) {

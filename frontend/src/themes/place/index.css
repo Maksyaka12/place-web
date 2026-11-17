@@ -36,14 +36,6 @@ body {
 }
 
 /* ── NAV ── */
-nav:not(.base-app-bottom-nav) {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--text-2) 60%, transparent);
-
-transition: all 0.3s;
-}
 @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
 
 .ham { display: none; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--ink); padding: 8px 10px; font-size: 1.1rem; }

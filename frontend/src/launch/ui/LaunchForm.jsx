@@ -1,12 +1,12 @@
-// Launch a token (/launch/new): type, logo, name, ticker, pair, links, vanity address, options (fee split,
-// dev buy, editable metadata) and the Economics block: the creator's 0.7% in three baskets (burn, community fund,
-// the creator), set with templates and nested sliders.
-// The preview on the right shows the token as it will start. One transaction creates the token, its pool
-// with locked liquidity and the creator vault.
+// Launch a token (/launch/new), in three steps as on the launchpad reference: 01 Basics (B20 or ERC-20, logo, name,
+// ticker, pair, links), 02 Economy (Standard, or Economy with taxes and five buckets), 03 Launch options (fee split,
+// dev buy, anti-sniping, editable metadata, vanity address). The live preview and the launch button sit on the right.
+// `?pair=<address>` preselects the pair (the Stocks page links here). One transaction creates the token, its pool
+// with locked liquidity and its vaults.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ImagePlus, RefreshCw, Loader2, Info, Plus, Trash2, Flame, Users, HandCoins, AlertTriangle, Lock } from 'lucide-react';
+import { ArrowLeft, ImagePlus, RefreshCw, Loader2, Info, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { encodeFunctionData, isAddress, maxUint256 } from 'viem';
 import { Button, Card, Badge, Alert } from '../../themes/place/components/ui';
 import { TxButton, TxResult, ConnectButton } from '../../themes/place/pages/place/parts';
@@ -22,20 +22,11 @@ import { ERC20_ABI, ETH, quoteAddress, DIRECT_ROUTE } from '../swap.js';
 import { httpsLink, xHandle, telegramHandle } from '../profile.js';
 import { usd, smallNumber, compact } from '../format.js';
 import { PairButton, PairPicker } from './PairPicker.jsx';
-import {
-  PLATFORM_FEE_PCT,
-  ECONOMY_TEMPLATES,
-  templateOf,
-  basketsFromNested,
-  nestedFromBaskets,
-  toBps,
-  feeFlow,
-  flowSentence,
-} from '../economy.js';
-import { TokenLogo, EconomicsBar, launchPath, launchTokenPath } from './parts.jsx';
+import { BUCKETS, DEFAULT_ALLOCATION, MIN_HOLDING_TOKENS, allocationTotal, pctToBps } from '../economy.js';
+import { TokenLogo, launchPath, launchTokenPath } from './parts.jsx';
+import { EconomyFields, LaunchTypePicker } from './EconomyFields.jsx';
 
 const SUPPLY = 1_000_000_000;
-const CREATOR_FEE_PCT_TEXT = 0.7;
 
 function Field({ label, hint, error, counter, children }) {
   return (
@@ -50,59 +41,44 @@ function Field({ label, hint, error, counter, children }) {
   );
 }
 
-function Section({ title, desc, children, right }) {
+/** A numbered step of the form. */
+function Step({ n, title, desc, right, children }) {
   return (
-    <Card className="pl-launch-section">
-      <div className="pl-launch-section-head">
+    <section className="pl-launch-step">
+      <div className="pl-launch-step-head">
+        <span className="pl-launch-step-n mono">{String(n).padStart(2, '0')}</span>
         <div>
-          <h2 className="pl-launch-section-title">{title}</h2>
+          <h2 className="pl-launch-step-title">{title}</h2>
           {desc && <p className="pl-launch-section-desc">{desc}</p>}
         </div>
         {right}
       </div>
-      {children}
-    </Card>
+      <div className="pl-launch-step-body">{children}</div>
+    </section>
   );
 }
 
-/** An on/off option row with its details below when on. */
+/** An on/off option card with its details below when on. */
 function Option({ title, desc, on, onChange, children }) {
   return (
     <div className={`pl-launch-option ${on ? 'on' : ''}`.trim()}>
       <label className="pl-launch-option-head">
+        <input type="checkbox" className="pl-launch-switch" checked={on} onChange={(e) => onChange(e.target.checked)} />
         <span className="pl-launch-option-text">
           <span className="pl-launch-strong">{title}</span>
           <span className="pl-launch-muted">{desc}</span>
         </span>
-        <input type="checkbox" className="pl-launch-switch" checked={on} onChange={(e) => onChange(e.target.checked)} />
       </label>
       {on && children && <div className="pl-launch-option-body">{children}</div>}
     </div>
   );
 }
 
-/** A 0–100% slider in 5% steps with the value beside it. */
-function Percent({ label, value, onChange, max = 100, Icon, tone, sub, nested }) {
-  return (
-    <div className={`pl-launch-percent ${nested ? 'nested' : ''}`.trim()}>
-      <div className="pl-launch-percent-head">
-        <span className="pl-launch-percent-label">
-          {Icon && <Icon size={15} className={tone} />}
-          {label}
-        </span>
-        <span className="mono pl-launch-strong">{value}%</span>
-      </div>
-      <input type="range" min={0} max={max} step={5} value={value} onChange={(e) => onChange(Number(e.target.value))} aria-label={label} />
-      {sub && <span className="pl-place-hint">{sub}</span>}
-    </div>
-  );
-}
-
-/** Tokens a buy of `amountIn` quote gets right after launch: one range from the start price up, 1% fee. */
-function devBuyOut(amountIn, startPrice) {
+/** Tokens a buy of `amountIn` quote gets right after launch: one range from the start price up, `feePct` fee. */
+function devBuyOut(amountIn, startPrice, feePct) {
   if (!amountIn || !startPrice) return null;
   const L = SUPPLY * Math.sqrt(startPrice);
-  const s1 = Math.sqrt(startPrice) + (amountIn * 0.99) / L;
+  const s1 = Math.sqrt(startPrice) + (amountIn * (1 - feePct / 100)) / L;
   return L / Math.sqrt(startPrice) - L / s1;
 }
 
@@ -115,21 +91,35 @@ function useDebounced(value, ms) {
   return v;
 }
 
-/** JSON launchParams from the API → the types viem encodes. */
+/** JSON launchParams from the API → the types viem encodes (0.3.0 economics). */
 function toLaunchParams(p) {
+  const e = p.economics;
   return {
     ...p,
     tokenKind: Number(p.tokenKind),
     expectedConfigVersion: BigInt(p.expectedConfigVersion),
     deadline: BigInt(p.deadline),
     economics: {
-      ...p.economics,
-      burnBps: Number(p.economics.burnBps),
-      communityBps: Number(p.economics.communityBps),
-      xShares: (p.economics.xShares || []).map((x) => ({ xId: BigInt(x.xId), bps: Number(x.bps) })),
+      ...e,
+      launchType: Number(e.launchType),
+      buyTaxRate: Number(e.buyTaxRate),
+      sellTaxRate: Number(e.sellTaxRate),
+      allocation: Object.fromEntries(Object.entries(e.allocation || {}).map(([k, v]) => [k, Number(v)])),
+      minHolding: BigInt(e.minHolding || 0),
+      minTraderDailyVolume: BigInt(e.minTraderDailyVolume || 0),
+      xShares: (e.xShares || []).map((x) => ({ xId: BigInt(x.xId), bps: Number(x.bps) })),
     },
   };
 }
+
+const initialEconomy = (pairAddress) => ({
+  buyTax: 3,
+  sellTax: 3,
+  allocation: { ...DEFAULT_ALLOCATION },
+  minHolding: String(MIN_HOLDING_TOKENS),
+  minTraderVolume: '',
+  rewardToken: pairAddress || 'eth',
+});
 
 export default function LaunchForm() {
   const navigate = useNavigate();
@@ -137,28 +127,27 @@ export default function LaunchForm() {
   const pairsQ = usePairs();
   const pairs = useMemo(() => pairsQ.data?.pairs || [], [pairsQ.data]);
   const d = launchD();
+  const [params] = useSearchParams();
 
   const [kind, setKind] = useState('b20');
   const [name, setName] = useState('');
   const [symbol, setSymbol] = useState('');
-  const [quote, setQuote] = useState('eth');
+  const [quote, setQuote] = useState(() => String(params.get('pair') || 'eth').toLowerCase());
   const [picker, setPicker] = useState(false);
   const [links, setLinks] = useState({ website: '', x: '', telegram: '' });
   const [logo, setLogo] = useState({ preview: null, uri: null, busy: false, error: null });
   const [suffix, setSuffix] = useState('');
   const [nonce, setNonce] = useState(0);
   const salt = useRef(null);
+  const [launchType, setLaunchType] = useState('standard');
+  const [econ, setEcon] = useState(() => initialEconomy(quote));
   const [split, setSplit] = useState(false);
   const [payout, setPayout] = useState('');
   const [xRows, setXRows] = useState([]);
   const [devBuy, setDevBuy] = useState(false);
   const [devAmount, setDevAmount] = useState('');
-  const [editable, setEditable] = useState(true);
-  // Nested sliders: how much of your part goes back to the token, and how much of that is burned.
-  const [nested, setNested] = useState(() => nestedFromBaskets(ECONOMY_TEMPLATES[3].burn, ECONOMY_TEMPLATES[3].fund));
-  const { burn, fund } = basketsFromNested(nested.giveBack, nested.burnOfGiveBack);
-  const template = templateOf(burn, fund);
-  const pickTemplate = (t) => setNested(nestedFromBaskets(t.burn, t.fund));
+  const [antiSnipe, setAntiSnipe] = useState(true);
+  const [editable, setEditable] = useState(false);
   const fileInput = useRef(null);
   const tx = usePlaceTx();
   const [stage, setStage] = useState(null);
@@ -168,6 +157,28 @@ export default function LaunchForm() {
   useEffect(() => {
     if (pairs.length && !pairs.some((p) => p.address === quote)) setQuote(pairs[0].address);
   }, [pairs, quote]);
+
+  // Reward tokens for this pair: the pair asset, the token itself, and listed swap routes.
+  const rewardQ = useQuery({
+    queryKey: [...launchKeys.all, 'reward-tokens', quote],
+    enabled: Boolean(pair) && typeof launchApi.rewardTokens === 'function',
+    staleTime: 60_000,
+    queryFn: ({ signal }) => launchApi.rewardTokens(quote, signal),
+  });
+  const rewardTokens = useMemo(() => {
+    if (rewardQ.data?.tokens?.length) return rewardQ.data.tokens;
+    return pair ? [{ address: pair.address, symbol: pair.symbol, source: 'pair' }, { address: 'self', symbol: symbol || 'TOKEN', source: 'self' }] : [];
+  }, [rewardQ.data, pair, symbol]);
+  // A starting minimum for trader rewards when the pair changes: about $25 of the pair asset.
+  const seededFor = useRef(null);
+  useEffect(() => {
+    if (!pair?.usd || seededFor.current === pair.address) return;
+    seededFor.current = pair.address;
+    setEcon((e) => ({ ...e, minTraderVolume: String(Number((25 / pair.usd).toPrecision(2))) }));
+  }, [pair]);
+  useEffect(() => {
+    if (rewardTokens.length && !rewardTokens.some((t) => t.address === econ.rewardToken)) setEcon((e) => ({ ...e, rewardToken: rewardTokens[0].address }));
+  }, [rewardTokens, econ.rewardToken]);
 
   // ── checks ──
   const nameErr = name.length > 64 ? 'At most 64 characters' : null;
@@ -195,13 +206,24 @@ export default function LaunchForm() {
   const xSharesPct = xRows.reduce((s, r) => s + (Number(r.pct) || 0), 0);
   const xErr = split && xRows.some((r) => !/^\d{1,20}$/.test(r.id.trim()) || !(Number(r.pct) > 0)) ? 'Each X account needs its numeric id and a share above 0%' : null;
   const payoutErr = split && payout && !isAddress(payout.trim()) ? 'Not a wallet address' : null;
-  const youPct = 100 - burn - fund;
   const shareErr = split && xSharesPct > 100 ? 'X accounts can share at most 100% of your part' : null;
-  const flow = feeFlow({ burn, fund, xPct: split ? Math.min(xSharesPct, 100) : 0 });
+
+  const isEconomy = launchType === 'economy';
+  const a = econ.allocation;
+  const econErr = {};
+  if (isEconomy) {
+    if (allocationTotal(a) !== 100) econErr.allocation = 'The allocation must add up to 100%';
+    const mh = Number(econ.minHolding);
+    if (a.holders > 0 && !(mh >= MIN_HOLDING_TOKENS && mh <= SUPPLY)) econErr.minHolding = `Between ${MIN_HOLDING_TOKENS.toLocaleString('en-US')} and ${SUPPLY.toLocaleString('en-US')} tokens`;
+    if (a.traders > 0 && !(Number(econ.minTraderVolume) > 0)) econErr.minTraderVolume = `Enter a daily volume in ${pair?.symbol || 'the pair asset'}`;
+  }
+  const feePct = isEconomy ? econ.buyTax : 1;
   const devIn = devBuy ? parseAmount(devAmount, pair?.decimals ?? 18) : null;
   const devErr = devBuy && devAmount && !devIn ? 'Enter an amount' : null;
 
-  const ready = Boolean(name.trim() && symbol && !nameErr && !symbolErr && !Object.keys(linkErr).length && pair && !suffixErr && !shareErr && !xErr && !payoutErr && !logo.busy);
+  const ready = Boolean(
+    name.trim() && symbol && !nameErr && !symbolErr && !Object.keys(linkErr).length && pair && !suffixErr && !shareErr && !xErr && !payoutErr && !logo.busy && !Object.keys(econErr).length
+  );
 
   // ── address preview: the API mines a salt for the 01 ending (+ the vanity suffix), and keeps it while details change ──
   const contractURI = buildContractUri({ image: logo.uri });
@@ -216,8 +238,18 @@ export default function LaunchForm() {
           uri: contractURI,
           editable: editable ? '1' : '0',
           ...cleanLinks,
-          burnBps: toBps(burn),
-          communityBps: toBps(fund),
+          type: launchType,
+          antiSnipe: antiSnipe ? '1' : '0',
+          ...(isEconomy
+            ? {
+                buyTaxBps: pctToBps(econ.buyTax),
+                sellTaxBps: pctToBps(econ.sellTax),
+                ...Object.fromEntries(BUCKETS.map((b) => [`${b.id}Bps`, pctToBps(a[b.id])])),
+                minHolding: a.holders > 0 ? econ.minHolding : undefined,
+                minTraderVolume: a.traders > 0 ? econ.minTraderVolume : undefined,
+                rewardToken: a.holders > 0 || a.traders > 0 ? econ.rewardToken : undefined,
+              }
+            : {}),
           xShares: split ? xRows.map((r) => `${r.id.trim()}:${Math.round(Number(r.pct) * 100)}`).join(',') || undefined : undefined,
           suffix: suffix || undefined,
           nonce,
@@ -275,10 +307,10 @@ export default function LaunchForm() {
   };
 
   const fee = BigInt(prediction.data?.nativeLaunchFee || '500000000000000');
-  const devTokens = devBuyOut(devIn != null ? Number(devAmount) : null, pair?.startPrice);
+  const devTokens = devBuyOut(devIn != null ? Number(devAmount) : null, pair?.startPrice, feePct);
 
   const launch = async () => {
-    if (!ready || !address) return;
+    if (!ready || !address || notDeployed) return;
     alertError(null);
     setStage('Reserving your address...');
     let p;
@@ -292,7 +324,6 @@ export default function LaunchForm() {
       return;
     }
     setStage(null);
-    const params = toLaunchParams(p.launchParams);
     const calls = [];
     const q = quoteAddress(quote);
     if (devIn) {
@@ -308,7 +339,7 @@ export default function LaunchForm() {
         data: encodeFunctionData({
           abi: LAUNCH_FACTORY_ABI,
           functionName: 'createLaunchAndBuy',
-          args: [params, { fundingToken: q, amountIn: devIn, minAmountOut: 1n, routeData: DIRECT_ROUTE }],
+          args: [toLaunchParams(p.launchParams), { fundingToken: q, amountIn: devIn, minAmountOut: 1n, routeData: DIRECT_ROUTE }],
         }),
         value: BigInt(p.nativeLaunchFee) + (q === ETH ? devIn : 0n),
       });
@@ -323,24 +354,27 @@ export default function LaunchForm() {
       setTimeout(() => navigate(launchTokenPath(p.token)), 1200);
     }
   };
-  const predicted = prediction.data;
+  // Before 0.3.0 is deployed the API answers from local math: no address, no transaction.
+  const notDeployed = prediction.data?.deployed === false;
+  const predicted = prediction.data?.token ? prediction.data : null;
   const ending = (suffix || '').toLowerCase() + '01';
+  const rewardSymbol = rewardTokens.find((t) => t.address === econ.rewardToken)?.symbol;
 
   return (
     <div className="pl-launch pl-launch-new">
       <Link to={launchPath()} className="pl-place-back">
         <ArrowLeft size={14} />
-        Launchpad
+        Dashboard
       </Link>
-      <header className="page-header pl-launch-new-header">
+      <header className="pl-launch-new-header">
         <h1 className="page-title">Launch a token</h1>
-        <p className="page-desc">One transaction creates the token, its pool with liquidity locked for good, and your fee vault</p>
+        <p className="page-desc">One transaction creates the token, its pool with liquidity locked for good, and its vaults</p>
       </header>
 
       <div className="pl-launch-new-cols">
         <form className="pl-place-form pl-launch-new-form" onSubmit={(e) => e.preventDefault()}>
-          <Section title="Token type">
-            <div className="pl-launch-kinds" role="radiogroup" aria-label="Token type">
+          <Step n={1} title="Basics">
+            <div className="pl-launch-kinds" role="radiogroup" aria-label="Token standard">
               {[
                 { id: 'b20', title: 'B20', badge: 'Base standard', desc: 'Native Base token: fixed supply, no admin, cheaper transfers. Address starts with 0xB2.' },
                 { id: 'erc20', title: 'ERC-20', badge: 'Classic', desc: 'The standard every wallet and app knows. Fixed supply, no owner, no mint.' },
@@ -354,9 +388,6 @@ export default function LaunchForm() {
                 </button>
               ))}
             </div>
-          </Section>
-
-          <Section title="Token">
             <div className="pl-launch-logo-row">
               <button type="button" className="pl-launch-logo-drop" onClick={() => fileInput.current?.click()} aria-label="Upload logo">
                 {logo.preview ? <img src={logo.preview} alt="" /> : <ImagePlus size={24} />}
@@ -397,9 +428,6 @@ export default function LaunchForm() {
               </Alert>
             )}
             {pairsQ.isLoading && <span className="pl-place-hint">Loading pairs...</span>}
-          </Section>
-
-          <Section title="Links" desc="Optional. Shown on the token page.">
             <div className="pl-launch-three">
               <Field label="Website" error={linkErr.website}>
                 <input value={links.website} onChange={(e) => setLinks({ ...links, website: e.target.value })} placeholder="yourproject.xyz" />
@@ -411,74 +439,39 @@ export default function LaunchForm() {
                 <input value={links.telegram} onChange={(e) => setLinks({ ...links, telegram: e.target.value })} placeholder="t.me/yourproject" />
               </Field>
             </div>
-          </Section>
+          </Step>
 
-          <Section
-            title="Economics"
-            desc={`Every trade pays a 1% fee: ${CREATOR_FEE_PCT_TEXT}% to your token's vault, ${PLATFORM_FEE_PCT}% to Place. Choose what your part does.`}
+          <Step n={2} title="Economy" desc="A plain token, or one with its own taxes and rewards">
+            <LaunchTypePicker value={launchType} onChange={setLaunchType} />
+            {isEconomy ? (
+              <EconomyFields value={econ} onChange={setEcon} pair={pair} symbol={symbol} rewardTokens={rewardTokens} errors={econErr} />
+            ) : (
+              <p className="pl-place-hint">Every buy and sell pays 1% in {pair?.symbol || 'the pair asset'}: 0.7% to you, 0.3% to Place. You claim your part in Profile.</p>
+            )}
+            {econErr.allocation && <span className="pl-place-hint error">{econErr.allocation}</span>}
+          </Step>
+
+          <Step
+            n={3}
+            title="Launch options"
+            right={
+              <button
+                type="button"
+                className="pl-place-icon-btn pl-launch-refresh"
+                aria-label="New address"
+                title="New address"
+                disabled={!predictArgs || prediction.isFetching}
+                onClick={() => {
+                  salt.current = null;
+                  setNonce((n) => n + 1);
+                }}
+              >
+                <RefreshCw size={15} className={prediction.isFetching ? 'spin' : ''} />
+              </button>
+            }
           >
-            <div className="pl-launch-econ">
-              <div className="pl-launch-templates" role="radiogroup" aria-label="Economics template">
-                {ECONOMY_TEMPLATES.map((t) => (
-                  <button key={t.id} type="button" role="radio" aria-selected={template?.id === t.id} className="pl-launch-template" onClick={() => pickTemplate(t)}>
-                    <span className="pl-launch-strong">{t.label}</span>
-                    <span className="pl-launch-muted mono">
-                      {t.burn ? `${t.burn}% burn` : 'no burn'} · {t.fund ? `${t.fund}% fund` : 'no fund'}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              {template && <p className="pl-place-hint">{template.desc}.</p>}
-              <Percent
-                label="Give back to the token"
-                value={nested.giveBack}
-                onChange={(v) => setNested({ ...nested, giveBack: v })}
-                Icon={HandCoins}
-                tone="pl-launch-accent"
-                sub={`${nested.giveBack}% of your part works for holders, ${youPct}% is yours.`}
-              />
-              {nested.giveBack > 0 && (
-                <Percent
-                  nested
-                  label="Of that, burn"
-                  value={Math.round(nested.burnOfGiveBack / 5) * 5}
-                  onChange={(v) => setNested({ ...nested, burnOfGiveBack: v })}
-                  Icon={Flame}
-                  tone="pl-launch-buy"
-                  sub={`${burn}% burned, ${fund}% to the community fund.`}
-                />
-              )}
-              <EconomicsBar burn={burn} fund={fund} x={split ? (youPct * Math.min(xSharesPct, 100)) / 100 : 0} you={split ? (youPct * (100 - Math.min(xSharesPct, 100))) / 100 : youPct} />
-              <p className="pl-launch-flow">{flowSentence(flow)}.</p>
-              {shareErr && <span className="pl-place-hint error">{shareErr}</span>}
-              <ul className="pl-launch-econ-notes">
-                {burn > 0 && (
-                  <li>
-                    <Flame size={14} className="pl-launch-buy" />
-                    <span>
-                      Burn: once a day the vault buys {symbol ? `$${symbol}` : 'the token'} in its own pool and sends it to 0x…dEaD. Anyone can trigger it, Place does it daily. Small daily buys keep the price impact low.
-                    </span>
-                  </li>
-                )}
-                {fund > 0 && (
-                  <li>
-                    <Users size={14} className="pl-launch-accent" />
-                    <span>
-                      Community fund: stays in the vault. You cannot withdraw it, you can only turn it into holder campaigns or staking programs, in any listed reward token. If you leave it unused for 30 days, anyone can start a default holder campaign
-                      {pair?.defaultCampaignMinimum ? ` (from ${formatAmount(pair.defaultCampaignMinimum, pair.decimals)} ${pair.symbol})` : ''}.
-                    </span>
-                  </li>
-                )}
-              </ul>
-              <Alert tone="info" icon={<Lock size={15} />}>
-                After launch you can raise the burn and fund shares, never lower them, so holders can count on them.
-              </Alert>
-            </div>
-          </Section>
-
-          <Section title="Options">
             <div className="pl-launch-options">
-              <Option title="Split creator fees" desc="Send your part to another wallet, or share it with X accounts" on={split} onChange={setSplit}>
+              <Option title="Share creator fees" desc="Send your creator funds to another wallet, or share them with X accounts. This does not change the taxes." on={split} onChange={setSplit}>
                 <Field label="Payout wallet" error={payoutErr} hint="Leave empty to get paid to this wallet. You can change it any time.">
                   <input value={payout} onChange={(e) => setPayout(e.target.value)} placeholder={address || '0x...'} className="mono" spellCheck={false} />
                 </Field>
@@ -502,24 +495,17 @@ export default function LaunchForm() {
                       </button>
                     </div>
                   ))}
-                  {xErr && <span className="pl-place-hint error">{xErr}</span>}
+                  {(xErr || shareErr) && <span className="pl-place-hint error">{xErr || shareErr}</span>}
                   {xRows.length < 5 && (
                     <Button type="button" size="sm" variant="ghost" onClick={() => setXRows([...xRows, { id: '', pct: '' }])}>
                       <Plus size={14} />
                       Add X account
                     </Button>
                   )}
-                  <span className="pl-place-hint">
-                    Shares are a part of your creator fee. They wait in the vault until the account links a wallet with Sign in with X (coming soon).
-                  </span>
+                  <span className="pl-place-hint">Shares are a part of your creator funds. They wait in the vault until the account links a wallet with Sign in with X (coming soon).</span>
                 </div>
               </Option>
-              <Option
-                title="Dev buy"
-                desc="Buy your own token in the launch transaction, before anyone else, at the normal 1% fee"
-                on={devBuy}
-                onChange={setDevBuy}
-              >
+              <Option title="Include dev buy" desc={`Buy tokens as part of the launch, in the same transaction, at the normal ${isEconomy ? 'buy tax' : '1% fee'}`} on={devBuy} onChange={setDevBuy}>
                 <Field
                   label={`Amount in ${pair?.symbol || 'the pair asset'}`}
                   error={devErr}
@@ -531,29 +517,24 @@ export default function LaunchForm() {
                   </div>
                 </Field>
               </Option>
-              <Option title="Editable metadata" desc="Change the name and logo later. The ticker never changes." on={editable} onChange={setEditable} />
+              <div className="pl-launch-two even">
+                <Option title="Enable anti-sniping" desc="Fees start high and fall to the normal rate over 20 seconds. The dev buy skips this extra charge." on={antiSnipe} onChange={setAntiSnipe} />
+                <Option title="Metadata editable after launch" desc="Let the creator update the name and logo after launch. Leave off to lock them. The ticker never changes." on={editable} onChange={setEditable} />
+              </div>
             </div>
-          </Section>
-
-          <Section
-            title="Token address"
-            desc="Every Place token address ends in 01. Add up to two characters of your own before it."
-            right={
-              <button type="button" className="pl-place-icon-btn pl-launch-refresh" aria-label="New address" title="New address" disabled={!predictArgs || prediction.isFetching} onClick={() => {
-                salt.current = null;
-                setNonce((n) => n + 1);
-              }}>
-                <RefreshCw size={15} className={prediction.isFetching ? 'spin' : ''} />
-              </button>
-            }
-          >
             <div className="pl-launch-vanity">
-              <Field label="Ending" error={suffixErr}>
+              <Field label="Address ending" error={suffixErr} hint="Optional, before the 01 every Place address ends in">
                 <div className="pl-launch-prefixed suffix">
-                  <input value={suffix} onChange={(e) => {
-                    salt.current = null;
-                    setSuffix(e.target.value.replace(/^0x/i, '').slice(0, 2));
-                  }} placeholder="ab" className="mono" spellCheck={false} />
+                  <input
+                    value={suffix}
+                    onChange={(e) => {
+                      salt.current = null;
+                      setSuffix(e.target.value.replace(/^0x/i, '').slice(0, 2));
+                    }}
+                    placeholder="ab"
+                    className="mono"
+                    spellCheck={false}
+                  />
                   <span className="mono">01</span>
                 </div>
               </Field>
@@ -564,6 +545,8 @@ export default function LaunchForm() {
                     <span className="pl-launch-muted">Connect a wallet to reserve one</span>
                   ) : !predictArgs ? (
                     <span className="pl-launch-muted">Fill in the name, ticker and pair first</span>
+                  ) : notDeployed ? (
+                    <span className="pl-launch-muted">Launch contracts 0.3.0 are not deployed on this network yet</span>
                   ) : prediction.isFetching && !predicted ? (
                     <span className="pl-launch-muted">Finding an address ending in {ending}...</span>
                   ) : prediction.error ? (
@@ -575,12 +558,10 @@ export default function LaunchForm() {
                     </>
                   ) : null}
                 </span>
-                {kind === 'erc20' && predicted && (
-                  <span className="pl-place-hint">An ERC-20 address depends on the name, logo and links, so it changes while you edit them. B20 addresses stay put.</span>
-                )}
+                {kind === 'erc20' && predicted && <span className="pl-place-hint">An ERC-20 address depends on the name, logo and links, so it changes while you edit them. B20 addresses stay put.</span>}
               </div>
             </div>
-          </Section>
+          </Step>
         </form>
 
         <aside className="pl-launch-new-side">
@@ -590,117 +571,162 @@ export default function LaunchForm() {
             symbol={symbol}
             logo={logo.preview}
             pair={pair}
-            predicted={predicted}
-            fee={fee}
-            devTokens={devTokens}
-            devAmount={devIn ? devAmount : null}
-            burn={burn}
-            fund={fund}
+            launchType={launchType}
+            econ={econ}
+            rewardSymbol={rewardSymbol === 'TOKEN' || econ.rewardToken === 'self' ? symbol || 'your token' : rewardSymbol}
+            editable={editable}
           />
-          <div className="pl-launch-submit">
-            {!address ? (
-              <ConnectButton size="lg">Connect wallet to launch</ConnectButton>
-            ) : (
-              <TxButton tx={tx} onClick={launch} size="lg" fullWidth disabled={!ready || Boolean(stage) || !prediction.data} busyLabel="Launching on Base...">
-                {stage || `Launch ${symbol ? `$${symbol}` : 'token'} · ${formatAmount(fee + (devIn && quoteAddress(quote) === ETH ? devIn : 0n), 18)} ETH`}
-              </TxButton>
-            )}
-            {address && !ready && <span className="pl-place-hint">Add a name, a ticker and a pair to launch.</span>}
-            {tx.step && tx.busy && <span className="pl-place-hint">Step: {tx.step}</span>}
-            <TxResult tx={tx} success="Launched. Opening your token page" />
-            {launchError && (
-              <Alert tone="danger" icon={<AlertTriangle size={16} />}>
-                {launchError}
-              </Alert>
-            )}
-            {isTestnet && (
-              <span className="pl-place-hint pl-launch-center">
-                <Info size={12} /> Base Sepolia testnet. Get test ETH from a Base Sepolia faucet.
-              </span>
-            )}
-          </div>
+          <Card className="pl-launch-summary">
+            <dl className="pl-launch-summary-kv">
+              <div>
+                <dt>Fixed supply</dt>
+                <dd className="mono">1B</dd>
+              </div>
+              <div>
+                <dt>Pool model</dt>
+                <dd>Locked pool</dd>
+              </div>
+              <div>
+                <dt>Launch market cap</dt>
+                <dd className="mono">{pair?.startFdvUsd != null ? `≈ ${usd(pair.startFdvUsd)}` : pair ? `${smallNumber(pair.startFdv)} ${pair.symbol}` : '—'}</dd>
+              </div>
+              <div>
+                <dt>Taxes</dt>
+                <dd className="mono">{isEconomy ? `${econ.buyTax}% buy · ${econ.sellTax}% sell` : '1% buy · 1% sell'}</dd>
+              </div>
+              <div>
+                <dt>Creation fee</dt>
+                <dd className="mono">{formatAmount(fee, 18)} ETH</dd>
+              </div>
+              <div>
+                <dt>Paired asset</dt>
+                <dd>{pair?.symbol || '—'}</dd>
+              </div>
+              {devIn && (
+                <div>
+                  <dt>Dev buy</dt>
+                  <dd className="mono">
+                    {devAmount} {pair?.symbol} → ~{compact(devTokens)}
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>Address</dt>
+                <dd className="mono">
+                  {predicted ? (
+                    <a className="pl-place-link" href={explorerAddress(predicted.token)} target="_blank" rel="noopener noreferrer">
+                      {shortAddress(predicted.token)}
+                    </a>
+                  ) : (
+                    '—'
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <div className="pl-launch-submit">
+              {!address ? (
+                <ConnectButton size="lg">Connect wallet to launch</ConnectButton>
+              ) : (
+                <TxButton tx={tx} onClick={launch} size="lg" fullWidth variant="primary" disabled={!ready || Boolean(stage) || !predicted} busyLabel="Launching on Base...">
+                  {notDeployed ? 'Launching opens once 0.3.0 is deployed' : stage || `Launch token · ${formatAmount(fee + (devIn && quoteAddress(quote) === ETH ? devIn : 0n), 18)} ETH`}
+                </TxButton>
+              )}
+              {address && !ready && <span className="pl-place-hint pl-launch-center">Add a name, a ticker and a pair{isEconomy ? ', and finish the economy' : ''} to launch.</span>}
+              <span className="pl-place-hint pl-launch-center">You confirm the transaction in your wallet. Nothing is minted until you submit.</span>
+              {tx.step && tx.busy && <span className="pl-place-hint">Step: {tx.step}</span>}
+              <TxResult tx={tx} success="Launched. Opening your token page" />
+              {launchError && (
+                <Alert tone="danger" icon={<AlertTriangle size={16} />}>
+                  {launchError}
+                </Alert>
+              )}
+              {isTestnet && (
+                <span className="pl-place-hint pl-launch-center">
+                  <Info size={12} /> Base Sepolia testnet. Get test ETH from a Base Sepolia faucet.
+                </span>
+              )}
+            </div>
+          </Card>
         </aside>
       </div>
 
-      {picker && <PairPicker pairs={pairs} value={quote} onPick={(a) => {
-        salt.current = null;
-        setQuote(a);
-      }} onClose={() => setPicker(false)} />}
+      {picker && (
+        <PairPicker
+          pairs={pairs}
+          value={quote}
+          onPick={(addr) => {
+            salt.current = null;
+            setQuote(addr);
+          }}
+          onClose={() => setPicker(false)}
+        />
+      )}
     </div>
   );
 }
 
-function Preview({ kind, name, symbol, logo, pair, predicted, fee, devTokens, devAmount, burn, fund }) {
+function Preview({ kind, name, symbol, logo, pair, launchType, econ, rewardSymbol, editable }) {
   const startPrice = pair?.startPrice;
   const startUsd = pair?.usd != null && startPrice != null ? startPrice * pair.usd : null;
+  const isEconomy = launchType === 'economy';
+  const a = econ.allocation;
   return (
     <Card className="pl-launch-preview">
-      <span className="pl-launch-preview-label">Preview</span>
+      <span className="pl-launch-preview-label">Live preview</span>
       <div className="pl-launch-preview-head">
-        <TokenLogo token={{ symbol: symbol || name || '?', name }} src={logo} size={56} />
+        <TokenLogo token={{ symbol: symbol || name || 'T', name }} src={logo} size={48} />
         <div className="pl-launch-preview-title">
-          <span className="pl-launch-preview-name">{name || 'Token name'}</span>
-          <span className="pl-launch-muted">${symbol || 'TICKER'}</span>
-          <span className="pl-launch-preview-badges">
-            <Badge tone="neutral">{kind === 'b20' ? 'B20' : 'ERC-20'}</Badge>
-            {pair && <Badge tone="neutral">{pair.symbol} pair</Badge>}
-            <Badge tone="accent">Launched on Place</Badge>
+          <span className="pl-launch-preview-name">{name || 'Your token'}</span>
+          <span className="pl-launch-muted mono">
+            {symbol || 'TOKEN'}/{pair?.symbol || '—'}
           </span>
         </div>
+        <Badge tone="accent" pill>
+          New
+        </Badge>
       </div>
-      <dl className="pl-place-kv pl-launch-preview-kv">
+      <p className="pl-launch-preview-desc">
+        {isEconomy
+          ? `${econ.buyTax}% buy and ${econ.sellTax}% sell tax, split between ${BUCKETS.filter((b) => a[b.id] > 0)
+              .map((b) => b.short.toLowerCase())
+              .join(', ')}.`
+          : 'Fixed-supply token trading on a locked Uniswap v4 pool.'}
+      </p>
+      <div className="pl-launch-preview-grid">
         <div>
-          <dt>Start price</dt>
-          <dd className="mono">{startUsd != null ? usd(startUsd) : startPrice != null ? `${smallNumber(startPrice)} ${pair.symbol}` : '—'}</dd>
+          <span className="pl-launch-preview-k">Start price</span>
+          <span className="mono pl-launch-strong">{startUsd != null ? `≈ ${usd(startUsd)}` : startPrice != null ? `${smallNumber(startPrice)} ${pair.symbol}` : '—'}</span>
+          {startPrice != null && pair?.usd != null && <span className="pl-launch-muted pl-launch-small mono">{smallNumber(startPrice)} {pair.symbol}</span>}
         </div>
         <div>
-          <dt>Start market cap</dt>
-          <dd className="mono">{pair?.startFdvUsd != null ? usd(pair.startFdvUsd) : pair ? `${smallNumber(pair.startFdv)} ${pair.symbol}` : '—'}</dd>
+          <span className="pl-launch-preview-k">Launch cap</span>
+          <span className="mono pl-launch-strong">{pair?.startFdvUsd != null ? `≈ ${usd(pair.startFdvUsd)}` : '—'}</span>
+          {pair && <span className="pl-launch-muted pl-launch-small mono">{smallNumber(pair.startFdv)} {pair.symbol}</span>}
         </div>
         <div>
-          <dt>Supply</dt>
-          <dd className="mono">1,000,000,000</dd>
+          <span className="pl-launch-preview-k">Fixed supply</span>
+          <span className="mono pl-launch-strong">1B</span>
         </div>
-        <div>
-          <dt>Liquidity</dt>
-          <dd>All supply, locked for good</dd>
-        </div>
-        <div>
-          <dt>Launch fee</dt>
-          <dd className="mono">{formatAmount(fee, 18)} ETH</dd>
-        </div>
-        {devAmount && (
+        {isEconomy && (a.holders > 0 || a.traders > 0) && (
           <div>
-            <dt>Dev buy</dt>
-            <dd className="mono">
-              {devAmount} {pair?.symbol} → ~{compact(devTokens)} {symbol || ''}
-            </dd>
+            <span className="pl-launch-preview-k">Rewards in</span>
+            <span className="pl-launch-strong">{rewardSymbol || '—'}</span>
           </div>
         )}
-        <div>
-          <dt>Your fee</dt>
-          <dd>
-            {CREATOR_FEE_PCT_TEXT}% of each trade
-            <span className="pl-launch-muted">
-              {' '}
-              ({burn ? `${burn}% burned` : 'no burn'}, {fund ? `${fund}% community fund` : 'no fund'})
-            </span>
-          </dd>
+      </div>
+      {isEconomy && (
+        <div className="pl-launch-preview-bar" aria-label="Tax allocation">
+          {BUCKETS.filter((b) => a[b.id] > 0).map((b) => (
+            <span key={b.id} className={`pl-econ-fill ${b.tone}`} style={{ width: `${a[b.id]}%` }} title={`${b.label} ${a[b.id]}%`} />
+          ))}
         </div>
-        <div>
-          <dt>Address</dt>
-          <dd className="mono">
-            {predicted ? (
-              <a className="pl-place-link" href={explorerAddress(predicted.token)} target="_blank" rel="noopener noreferrer">
-                {shortAddress(predicted.token)}
-              </a>
-            ) : (
-              '—'
-            )}
-          </dd>
-        </div>
-      </dl>
-      <p className="pl-place-hint">The first 20 seconds after launch a high anti-snipe fee protects your launch from bots; it falls to 1%.</p>
+      )}
+      <div className="pl-launch-preview-badges">
+        <Badge tone="neutral">{kind === 'b20' ? 'B20' : 'ERC-20'}</Badge>
+        {pair && <Badge tone="neutral">{pair.symbol}</Badge>}
+        <Badge tone="neutral">{isEconomy ? 'Economy' : 'Standard'}</Badge>
+        {!editable && <Badge tone="success">Immutable</Badge>}
+      </div>
     </Card>
   );
 }

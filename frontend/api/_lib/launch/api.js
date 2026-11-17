@@ -5,10 +5,16 @@
 //   GET launch/candles  ?chain&address&interval=1m|5m|15m|1h|4h|1d[&from&to&limit]
 //   GET launch/trades   ?chain[&address|trader&limit&before=block:logIndex]   (no filter: the live feed)
 //   GET launch/holders  ?chain&address[&limit&offset]
-//   GET launch/creator  ?chain&address[&token&slippageBps]  creator panel: vault baskets, claim, process(), fund tools
-//                       (0.1.0 legacy tokens keep the old buyback / rewards panel)
-//   GET launch/predict  ?chain&creator&kind&quote&name&symbol[&uri&editable&website&x&telegram&suffix&salt&xShares&…]
+//   GET launch/creator  ?chain&address[&token&slippageBps]  creator panel per release: 0.3.0 creator vault + Community
+//                       Pool, 0.2.0 baskets / process() / fund tools, 0.1.0 buyback / rewards
+//   GET launch/predict  ?chain&creator&kind&quote&name&symbol[&uri&editable&website&x&telegram&suffix&salt&xShares
+//                       &type=standard|economy&buyTaxBps&sellTaxBps&creatorBps&holdersBps&tradersBps&burnBps&communityBps
+//                       &minHolding&minTraderVolume&rewardToken&antiSnipe]   launchParams (0.3.0 economics) + preview
+//   GET launch/reward-tokens, launch/rewards   0.3.0 rewards (./rewards.js)
+//   GET launch/hub, launch/hub/stream, launch/hub/asset   the Rewards hub: every stream of any token (./hub.js)
+//   token page (launch/token) of 0.3.0 tokens also has: economy, burn, rewards (streams + epochs), revenue
 //   GET launch/pairs    ?chain                             launch pairs with start price and USD price
+//   GET launch/stocks   ?chain                             tokenized stocks on Base for the Stocks page (./stocks.js)
 //   GET launch/stats    ?chain                             dashboard totals: launches, traders, volume, top market cap
 //   GET launch/profile  ?address | ?addresses=a,b          creator profiles
 //   POST launch/profile {address, profile, issuedAt, signature}   save a profile signed by its wallet
@@ -16,10 +22,14 @@
 //
 // Reads come from the indexer's tables. Before answering, market endpoints let the indexer catch up with the
 // chain (deps.refresh, at most every few seconds), so trades show up seconds after they land.
-import { encodeFunctionData, getAddress } from 'viem';
+import { encodeFunctionData, getAddress, parseUnits } from 'viem';
 import { LAUNCH_FACTORY_ABI } from '../../../src/launch/abi.js';
 import { LEGACY_CREATOR_VAULT_ABI } from '../../../src/launch/abi.legacy.js';
-import { launchDeployment, launchReleases, releaseByVersion, LAUNCH_SUPPLY } from '../../../src/launch/deployments.js';
+import { launchDeployment, launchReleases, releaseByVersion, currentDeployed, LAUNCH_SUPPLY } from '../../../src/launch/deployments.js';
+import { releaseGeneration } from './indexer.js';
+import { HUB_ROUTES } from './hub.js';
+import { REWARDS_ROUTES, economyView, burnView, revenueView, streamsForToken, vaultPanelV3, rewardTokenOptions } from './rewards.js';
+import { previewTax, ratesPercent, bpsToRate, bpsToShare, LAUNCH_TYPE, EconomicsError } from './taxMath.js';
 import { KEEPER_ROUTES } from './keeper.js';
 import { ECONOMY_ROUTES, vaultPanelV2, vaultPublicState, burnHistory, stakingForToken, revertReason } from './economy.js';
 import { CANDLE_INTERVALS, fillCandles, units, change } from '../../../src/launch/market.js';
@@ -29,6 +39,7 @@ import { reply, fail, chainOf, addressOf, limits, iso, str } from '../place/http
 import { ensureTokenMeta } from '../place/tokenMeta.js';
 import { retry } from '../place/chain.js';
 import { quoteUsd } from './prices.js';
+import { STOCKS_ROUTES } from './stocks.js';
 import { pairCategory, PAIR_CATEGORIES } from '../../../src/launch/pairs.js';
 import { cleanProfile, profileMessage, PROFILE_SIGNATURE_MAX_AGE_MS } from '../../../src/launch/profile.js';
 
@@ -51,6 +62,9 @@ export const LAUNCH_ROUTES = {
   'GET launch/profile': getProfile,
   'POST launch/profile': saveProfile,
   ...ECONOMY_ROUTES,
+  ...REWARDS_ROUTES,
+  ...HUB_ROUTES,
+  ...STOCKS_ROUTES,
   ...KEEPER_ROUTES,
 };
 
@@ -63,13 +77,15 @@ function launchChain(q) {
 
 const quoteParam = (v) => (v === 'eth' || v === 'ETH' ? ETH : addressOf(v, 'quote'));
 const outQuote = (a) => (a === ETH ? 'eth' : a);
-// Not people: the pool, every release's hook, PlaceStaking (staked tokens sit there) and the burn address.
+// Not people: the pool, every release's hook, FeeEscrow, rewards distributor, PlaceStaking (staked tokens sit
+// there) and the burn address.
 const notPeople = (chainId) => {
   const list = launchReleases(chainId);
-  return [ETH, DEAD, list[0].poolManager, ...list.map((r) => r.hook), ...list.map((r) => r.staking).filter(Boolean)];
+  return [ETH, DEAD, list[0].poolManager, ...list.flatMap((r) => [r.hook, r.staking, r.feeEscrow, r.rewardsDistributor]).filter(Boolean)];
 };
 const currentVersion = (chainId) => launchDeployment(chainId).version;
-const legacyVersion = (chainId) => launchReleases(chainId).find((r) => r.legacy)?.version ?? currentVersion(chainId);
+// Tokens indexed before launch_economy existed are 0.1.0, the only release then.
+const oldestVersion = (chainId) => launchReleases(chainId).find((r) => releaseGeneration(r.version) === 1)?.version ?? currentVersion(chainId);
 
 /**
  * The last block the indexer has read for this chain. Read after the data, so everything up to it is in the
@@ -112,7 +128,9 @@ const TOKEN_SELECT = `
     (select count(*)::int from launch_balances b where b.chain_id = t.chain_id and b.token = t.token and b.balance > 0
        and not (b.account = any($3::text[]))) as holders,
     (select balance::text from launch_balances b where b.chain_id = t.chain_id and b.token = t.token and b.account = '${DEAD}') as burned,
-    qp.usd as quote_usd, e.version, e.burn_bps, e.community_bps
+    qp.usd as quote_usd, e.version, e.burn_bps, e.community_bps, e.launch_type, e.config_version, e.buy_tax_rate, e.sell_tax_rate,
+    e.creator_share, e.holders_share, e.traders_share, e.burn_share, e.community_share, e.min_holding::text as min_holding,
+    e.min_trader_volume::text as min_trader_volume, e.reward_token, e.creator_vault, e.community_vault, e.anti_snipe
   from launch_tokens t
   left join launch_economy e on e.chain_id = t.chain_id and e.token = t.token
   left join launch_quotes q on q.chain_id = t.chain_id and q.quote = t.quote
@@ -132,17 +150,27 @@ function tokenParams(chainId, d, now, pairs) {
   return [chainId, new Date((now - DAY) * 1000).toISOString(), notPeople(chainId), quotes, quotes.map((qt) => pairs.get(qt).usd)];
 }
 
-/** Release and economics of a token row: 0.2.0 baskets, or the 0.1.0 buyback / rewards shares (legacy). */
+/**
+ * Release and economics of a token row. `generation`: 1 = 0.1.0 buyback / rewards shares, 2 = 0.2.0 burn and
+ * community-fund baskets of the creator side, 3 = 0.3.0 Standard / Economy with five baskets (`launchType`).
+ * `legacy` is true for every release but the current one.
+ */
 function economicsOf(r) {
   const chainId = Number(r.chain_id);
-  const version = r.version || legacyVersion(chainId);
+  const version = r.version || oldestVersion(chainId);
+  const generation = releaseGeneration(version);
   const legacy = version !== currentVersion(chainId);
   const xShares = JSON.parse(r.x_shares || '[]');
   const hook = releaseByVersion(chainId, version).hook;
-  if (legacy) return { version, legacy, hook, economics: { version, legacy, buybackBps: r.buyback_bps, buybackBurn: r.buyback_burn, rewardsBps: r.rewards_bps, xShares } };
-  const burnBps = Number(r.burn_bps || 0);
-  const communityBps = Number(r.community_bps || 0);
-  return { version, legacy, hook, economics: { version, legacy, burnBps, communityBps, creatorBps: 10_000 - burnBps - communityBps, xShares } };
+  const base = { version, legacy, generation, hook };
+  if (generation === 1) return { ...base, launchType: 'standard', economics: { version, legacy, generation, buybackBps: r.buyback_bps, buybackBurn: r.buyback_burn, rewardsBps: r.rewards_bps, xShares } };
+  if (generation === 2) {
+    const burnBps = Number(r.burn_bps || 0);
+    const communityBps = Number(r.community_bps || 0);
+    return { ...base, launchType: 'standard', economics: { version, legacy, generation, burnBps, communityBps, creatorBps: 10_000 - burnBps - communityBps, xShares } };
+  }
+  const e = economyView(r);
+  return { ...base, launchType: e?.launchType ?? null, economics: { version, legacy, generation, ...e, xShares } };
 }
 
 function tokenView(r, pairs) {
@@ -301,8 +329,13 @@ async function getToken({ query: q }, deps) {
   );
   const vaultTotals = await vaultSummary(deps.db, chainId, row.vault);
   const burns = await burnHistory(deps.db, chainId, row.vault);
-  const live = token.legacy ? null : await vaultPublicState(deps, chainId, row.vault, now);
+  const live = token.generation === 2 ? await vaultPublicState(deps, chainId, row.vault, now) : null;
   const staking = await stakingForToken(deps, chainId, address, now);
+  // 0.3.0: burn in the token (FeeEscrow), reward streams with their epochs, lifetime revenue per basket.
+  const v3 = token.generation >= 3;
+  const burn = v3 ? await burnView(deps, chainId, address, token.version) : null;
+  const rewards = v3 ? await streamsForToken(deps, chainId, address, now, { communityVault: row.community_vault }) : [];
+  const revenue = v3 ? await revenueView(deps.db, chainId, address) : null;
   return reply(
     200,
     {
@@ -316,6 +349,11 @@ async function getToken({ query: q }, deps) {
       burns,
       // Community fund and the daily process() (0.2.0); null for legacy tokens or when the chain cannot be read.
       fund: live ? { ...live.fund, quote: live.quote, defaultCampaign: live.defaultCampaign, process: live.process, burnReserve: live.burn.reserve } : null,
+      economy: v3 ? token.economics : null,
+      burn,
+      rewards,
+      revenue,
+      communityVault: row.community_vault || null,
       staking,
       campaigns: campaigns.map((c) => ({
         id: c.id,
@@ -471,13 +509,17 @@ async function holderRows(db, d, { chainId, row, limit, offset }) {
      order by launch_balances.balance desc, account limit ${limit} offset ${offset}`,
     [chainId, row.token]
   );
+  const list = launchReleases(chainId);
   const tags = new Map([
     [d.poolManager, 'pool'],
-    ...launchReleases(chainId).map((x) => [x.hook, 'hook']),
-    ...launchReleases(chainId).filter((x) => x.staking).map((x) => [x.staking, 'staking']),
+    ...list.filter((x) => x.hook).map((x) => [x.hook, 'hook']),
+    ...list.filter((x) => x.staking).map((x) => [x.staking, 'staking']),
+    ...list.filter((x) => x.feeEscrow).map((x) => [x.feeEscrow, 'escrow']),
+    ...list.filter((x) => x.rewardsDistributor).map((x) => [x.rewardsDistributor, 'rewards']),
     [DEAD, 'burned'],
   ]);
   if (row.vault) tags.set(row.vault, 'vault');
+  if (row.community_vault) tags.set(row.community_vault, 'community');
   return rows.map((h) => ({
     account: h.account,
     balance: h.balance,
@@ -490,7 +532,11 @@ async function getHolders({ query: q }, deps) {
   const { chainId, d } = launchChain(q);
   const address = addressOf(q.address);
   await fresh(deps, chainId);
-  const [row] = await deps.db.query('select token, vault, current_creator, launch_supply::text as launch_supply from launch_tokens where chain_id = $1 and token = $2', [chainId, address]);
+  const [row] = await deps.db.query(
+    `select t.token, t.vault, t.current_creator, t.launch_supply::text as launch_supply, e.community_vault from launch_tokens t
+     left join launch_economy e on e.chain_id = t.chain_id and e.token = t.token where t.chain_id = $1 and t.token = $2`,
+    [chainId, address]
+  );
   if (!row) fail('Not a Place Launch token (or not indexed yet)', 404);
   const { limit, offset } = limits(q, 200, 50);
   const holders = await holderRows(deps.db, d, { chainId, row, limit, offset });
@@ -626,7 +672,8 @@ async function getCreator({ query: q }, deps) {
   const tokens = [];
   for (const r of rows) {
     const t = tokenView(r, pairs);
-    const panel = !(r.vault && r.current_creator === creator) ? null : t.legacy ? await vaultPanel(deps, chainId, r, slippageBps, now) : await vaultPanelV2(deps, chainId, r, now);
+    const mine = r.vault && r.current_creator === creator;
+    const panel = !mine ? null : t.generation === 1 ? await vaultPanel(deps, chainId, r, slippageBps, now) : t.generation === 2 ? await vaultPanelV2(deps, chainId, r, now) : await vaultPanelV3(deps, chainId, r, now);
     const history = r.vault
       ? await deps.db.query(
           `select kind, amount::text as amount, amount2::text as amount2, account, ref, data, tx, at from launch_vault_events
@@ -647,12 +694,94 @@ async function getCreator({ query: q }, deps) {
 
 // ─────────────────────────────── launch form ───────────────────────────────
 
-const FACTORY_READS = ['configVersion', 'nativeLaunchFee', 'launchCreationEnabled', 'launchSupply'];
+const FACTORY_READS = ['configVersion', 'nativeLaunchFee', 'launchCreationEnabled', 'launchSupply', 'economySettings'];
+const SHARE_PARAMS = { creator: 'creatorBps', holders: 'holdersBps', traders: 'tradersBps', burn: 'burnBps', community: 'communityBps' };
+
+/**
+ * The 0.3.0 `economics` of a launch from the form's query: Standard ignores taxes and baskets; Economy takes
+ * buy / sell tax in bps (100–500), the five basket shares in bps of what is left after the platform (summing to
+ * 10000), the holder minimum in whole tokens, the trader minimum as a decimal amount of the pair asset, and the
+ * reward token (an address, `eth` or `self` = the launched token; default: the pair). `self` stays a marker
+ * here: predict puts the token address in once it is known.
+ */
+export function economicsFromQuery(q, { quote, quoteDecimals, xShares }) {
+  const type = String(q.type || 'standard').toLowerCase();
+  if (!(type in LAUNCH_TYPE)) fail('type must be standard or economy');
+  const zero = { creator: 0n, holders: 0n, traders: 0n, burn: 0n, community: 0n };
+  if (type === 'standard') {
+    return { launchType: LAUNCH_TYPE.standard, buyTaxRate: 0n, sellTaxRate: 0n, allocation: zero, minHolding: 0n, minTraderDailyVolume: 0n, rewardToken: ETH, xShares, rewardSelf: false };
+  }
+  const int = (v, name, lo, hi) => {
+    const n = v == null || v === '' ? 0 : Number(v);
+    if (!Number.isInteger(n) || n < lo || n > hi) fail(`${name} must be ${lo}–${hi}`);
+    return n;
+  };
+  const buy = int(q.buyTaxBps, 'buyTaxBps', 100, 500);
+  const sell = int(q.sellTaxBps, 'sellTaxBps', 100, 500);
+  const allocation = {};
+  let sum = 0;
+  for (const [k, p] of Object.entries(SHARE_PARAMS)) {
+    const v = int(q[p], p, 0, 10_000);
+    sum += v;
+    allocation[k] = bpsToShare(v);
+  }
+  if (sum !== 10_000) fail(`Basket shares must add up to 10000 (now ${sum})`);
+  let minHolding = 0n;
+  if (allocation.holders > 0n) {
+    if (!/^[0-9]{1,13}$/.test(String(q.minHolding ?? ''))) fail('minHolding must be a whole number of tokens');
+    minHolding = BigInt(q.minHolding) * 10n ** 18n;
+  }
+  let minTraderDailyVolume = 0n;
+  if (allocation.traders > 0n && q.minTraderVolume != null && q.minTraderVolume !== '') {
+    if (!/^[0-9]{1,30}(\.[0-9]{1,30})?$/.test(String(q.minTraderVolume))) fail('minTraderVolume must be a decimal amount of the pair asset');
+    const [, frac = ''] = String(q.minTraderVolume).split('.');
+    if (frac.replace(/0+$/, '').length > quoteDecimals) fail(`minTraderVolume has more than ${quoteDecimals} decimals`);
+    minTraderDailyVolume = parseUnits(String(q.minTraderVolume), quoteDecimals);
+  }
+  const rewards = allocation.holders > 0n || allocation.traders > 0n;
+  let rewardToken = ETH;
+  let rewardSelf = false;
+  if (rewards) {
+    const r = String(q.rewardToken ?? '').trim();
+    if (r === '' || r === 'pair') rewardToken = quote;
+    else if (r.toLowerCase() === 'self') rewardSelf = true;
+    else rewardToken = r.toLowerCase() === 'eth' ? ETH : addressOf(r, 'rewardToken');
+  }
+  return { launchType: LAUNCH_TYPE.economy, buyTaxRate: bpsToRate(buy), sellTaxRate: bpsToRate(sell), allocation, minHolding, minTraderDailyVolume, rewardToken, xShares, rewardSelf };
+}
+
+/** The X accounts sharing the creator basket: "xId:bps,xId:bps" (numeric X user ids, at most 5, bps of the creator basket). */
+function xSharesFromQuery(q) {
+  const list = String(q.xShares || '')
+    .split(',')
+    .filter(Boolean)
+    .map((pair) => {
+      const [id, b] = pair.split(':');
+      if (!/^\d{1,20}$/.test(id || '')) fail('xShares: X account ids are numbers');
+      const n = Number(b);
+      if (!Number.isInteger(n) || n <= 0 || n > 10_000) fail('xShares: every share needs 1–10000 bps');
+      return { xId: BigInt(id), bps: n };
+    });
+  if (list.length > 5) fail('At most 5 X accounts can share the creator fee');
+  if (new Set(list.map((x) => x.xId)).size !== list.length) fail('xShares: each X account once');
+  if (list.reduce((s, x) => s + x.bps, 0) > 10_000) fail('X shares add up to more than 100% of the creator basket');
+  return list;
+}
+
+const toJson = (v) => JSON.parse(JSON.stringify(v, (_, x) => (typeof x === 'bigint' ? x.toString() : x)));
+const sidePreview = (r) => {
+  const p = ratesPercent(r);
+  return { protocol: p.protocol, creator: p.creator, holders: p.holders, traders: p.traders, burn: p.burn, community: p.community, total: p.total };
+};
 
 /**
  * Everything the launch form needs to send createLaunch: a creatorSalt mined so the token address ends with
- * 01 (plus an optional vanity suffix), the predicted token and vault, config version, fee, start price, and
- * the encoded call. The address is double-checked with the factory's own predictLaunchToken.
+ * 01 (plus an optional vanity suffix), the predicted token and vault, config version, fee, start price, the
+ * 0.3.0 economics with the per-trade preview of both sides, and the encoded call. The address is checked with
+ * the factory's own predictLaunchToken and the preview with its previewTaxConfiguration.
+ *
+ * Before 0.3.0 is deployed (`deployed: false`) the answer has the same shape without token, salt and tx: the
+ * economics are validated and previewed by the local fee math, the pair comes from the index.
  */
 async function predict({ query: q }, deps) {
   const { chainId, d } = launchChain(q);
@@ -681,46 +810,64 @@ async function predict({ query: q }, deps) {
       values.push(q[k]);
     }
   }
-  const bps = (v, name) => {
-    const n = v == null || v === '' ? 0 : Number(v);
-    if (!Number.isInteger(n) || n < 0 || n > 10_000) fail(`${name} must be 0–10000`);
-    return n;
-  };
-  // Three baskets of the creator side: burn, community fund, the rest to the creator / X.
-  const burnBps = bps(q.burnBps, 'burnBps');
-  const communityBps = bps(q.communityBps, 'communityBps');
-  if (burnBps + communityBps > 10_000) fail('burnBps + communityBps must be at most 10000');
-  // X accounts that share the creator's part: "xId:bps,xId:bps" (numeric X user ids, at most 5).
-  const xShares = String(q.xShares || '')
-    .split(',')
-    .filter(Boolean)
-    .map((pair) => {
-      const [id, b] = pair.split(':');
-      if (!/^\d{1,20}$/.test(id || '')) fail('xShares: X account ids are numbers');
-      return { xId: BigInt(id), bps: bps(b, 'xShares bps') };
-    });
-  if (xShares.length > 5) fail('At most 5 X accounts can share the creator fee');
-  if (new Set(xShares.map((x) => x.xId)).size !== xShares.length) fail('xShares: each X account once');
-  if (xShares.some((x) => x.bps === 0)) fail('xShares: every share needs some bps');
-  // X shares are bps of what is left for the creator after burn and community (PlaceCreatorVault.XShare).
-  if (xShares.reduce((s, x) => s + x.bps, 0) > 10_000) fail('X shares add up to more than 100% of the creator part');
+  const xShares = xSharesFromQuery(q);
+  const antiSnipe = !(q.antiSnipe === '0' || q.antiSnipe === 'false');
   const keepSalt = /^0x[0-9a-fA-F]{64}$/.test(String(q.salt || '')) ? String(q.salt).toLowerCase() : null;
   const now = deps.now();
+  const deployed = currentDeployed(chainId);
   const client = deps.client(chainId);
-  const reads = await retry(() =>
-    client.multicall({
-      contracts: [
-        ...FACTORY_READS.map((functionName) => ({ address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName })),
-        { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'quoteConfig', args: [quote] },
-        { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'quoteLimits', args: [quote] },
-      ],
-      allowFailure: false,
-    })
-  );
-  const [configVersion, nativeLaunchFee, enabled, supply, quoteConfig, quoteLimits] = reads;
-  const [maxBurnPerProcess, defaultCampaignMinimum] = Array.isArray(quoteLimits) ? quoteLimits : [quoteLimits.maxBurnPerProcess, quoteLimits.defaultCampaignMinimum];
-  const [registered, quoteDecimals, startTick] = quoteConfig;
-  if (!registered) fail('This pair is not registered');
+
+  // Pair, supply, fee and config: from the factory, or from the index before the deploy.
+  let configVersion = 0n;
+  let nativeLaunchFee = 0n;
+  let enabled = false;
+  let supply = LAUNCH_SUPPLY;
+  let qd;
+  let startTick;
+  let defaultCampaignMinimum = null;
+  let distributor = true;
+  if (deployed) {
+    const reads = await retry(() =>
+      client.multicall({
+        contracts: [
+          ...FACTORY_READS.map((functionName) => ({ address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName })),
+          { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'quoteConfig', args: [quote] },
+          { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'quoteLimits', args: [quote] },
+        ],
+        allowFailure: false,
+      })
+    );
+    const [cv, fee, en, sup, settings, quoteConfig, limits] = reads;
+    [configVersion, nativeLaunchFee, enabled, supply] = [cv, fee, en, sup];
+    const [registered, decimals, tick] = quoteConfig;
+    if (!registered) fail('This pair is not registered');
+    qd = Number(decimals);
+    startTick = Number(tick);
+    defaultCampaignMinimum = (typeof limits === 'object' && limits !== null && 'defaultCampaignMinimum' in limits ? limits.defaultCampaignMinimum : limits).toString();
+    distributor = String(settings.rewardsDistributor ?? settings[3]).toLowerCase() !== ETH;
+  } else {
+    const [row] = await deps.db.query('select decimals, start_tick, registered from launch_quotes where chain_id = $1 and quote = $2', [chainId, quote]);
+    if (!row?.registered) fail('This pair is not registered');
+    qd = Number(row.decimals);
+    startTick = Number(row.start_tick);
+  }
+
+  const econ = economicsFromQuery(q, { quote, quoteDecimals: qd, xShares });
+  if (econ.launchType === LAUNCH_TYPE.economy && (econ.allocation.holders > 0n || econ.allocation.traders > 0n) && !econ.rewardSelf) {
+    const options = await rewardTokenOptions(deps, chainId, quote);
+    const allowed = new Set(options.filter((o) => o.source !== 'self').map((o) => (o.address === 'eth' ? ETH : o.address)));
+    if (!allowed.has(econ.rewardToken)) fail('rewardToken is not available for this pair: use the pair, self or a token from launch/reward-tokens');
+  }
+  const { rewardSelf, ...economics } = econ;
+  let local;
+  try {
+    // The token address does not change the rates: check them before mining.
+    local = previewTax({ ...economics, rewardToken: rewardSelf ? creator : economics.rewardToken }, { supply, distributor });
+  } catch (e) {
+    if (e instanceof EconomicsError) fail(e.message);
+    throw e;
+  }
+
   const params = {
     tokenKind: KIND_ID[kind],
     tokenName: name,
@@ -731,10 +878,44 @@ async function predict({ query: q }, deps) {
     expectedConfigVersion: configVersion,
     deadline: BigInt(now + 20 * 60),
     metadataEditable: q.editable === '1' || q.editable === 'true',
+    antiSnipeEnabled: antiSnipe,
     metadataKeys: keys,
     metadataValues: values,
-    economics: { burnBps, communityBps, xShares },
+    economics,
   };
+  const startPrice = 1.0001 ** startTick * 10 ** (18 - qd); // quote per token (tick in the token0 frame)
+  const common = {
+    chainId,
+    version: d.version,
+    deployed,
+    launchType: econ.launchType === LAUNCH_TYPE.economy ? 'economy' : 'standard',
+    quote: { address: outQuote(quote), decimals: qd, startTick, defaultCampaignMinimum },
+    supply: supply.toString(),
+    startPrice,
+    startFdv: startPrice * units(supply, 18),
+    antiSnipe,
+    rewardToken: rewardSelf ? 'self' : econ.launchType === LAUNCH_TYPE.economy && (econ.allocation.holders > 0n || econ.allocation.traders > 0n) ? outQuote(economics.rewardToken) : null,
+    deadline: Number(params.deadline),
+  };
+
+  if (!deployed) {
+    if (rewardSelf) params.economics = { ...economics, rewardToken: null };
+    return reply(200, {
+      ...common,
+      token: null,
+      vault: null,
+      creatorSalt: null,
+      launchEnabled: false,
+      configVersion: null,
+      nativeLaunchFee: null,
+      previewSource: 'local',
+      preview: { buy: sidePreview(local.buyRates), sell: sidePreview(local.sellRates) },
+      launchParams: toJson(params),
+      tx: null,
+      note: `Place Launch ${d.version} is not deployed on this chain yet: the economics are checked by the local fee math, there is no salt or transaction.`,
+    });
+  }
+
   const initCodeHash = kind === 'erc20' ? await retry(() => client.readContract({ address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'launchTokenInitCodeHash', args: [params] })) : null;
   const base = { kind, creator, factory: d.factory, tokenDeployer: d.tokenDeployer, vaultImplementation: d.creatorVaultImplementation, initCodeHash };
   // A random start, so two forms open at once never mine the same salt.
@@ -745,23 +926,31 @@ async function predict({ query: q }, deps) {
   const hit = kept && kept.token.endsWith(ending) ? { ...kept, tokenChecksum: getAddress(kept.token) } : mineSalt({ ...base, ending, start, maxTries: 1_000_000 });
   if (!hit) fail('No salt found, try a shorter suffix', 422);
   params.creatorSalt = hit.creatorSalt;
-  const [onchain, used] = await retry(() =>
-    client.multicall({
-      contracts: [
-        { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'predictLaunchToken', args: [params, creator] },
-        { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'isLaunchSaltUsed', args: [hit.scopedSalt] },
-      ],
-      allowFailure: false,
-    })
-  );
-  if (onchain.toLowerCase() !== hit.token) fail(`Prediction mismatch: factory says ${onchain}, Place computed ${hit.token}`, 500);
-  if (used) fail('Salt already used, ask again', 409);
+  // The token's own address as reward token is known only now (it does not change the address: economics are
+  // not part of the token's init code).
+  if (rewardSelf) params.economics = { ...economics, rewardToken: hit.token };
+  let preview;
+  try {
+    const [onchain, used, p] = await retry(() =>
+      client.multicall({
+        contracts: [
+          { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'predictLaunchToken', args: [params, creator] },
+          { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'isLaunchSaltUsed', args: [hit.scopedSalt] },
+          { address: d.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'previewTaxConfiguration', args: [params.economics] },
+        ],
+        allowFailure: false,
+      })
+    );
+    if (onchain.toLowerCase() !== hit.token) fail(`Prediction mismatch: factory says ${onchain}, Place computed ${hit.token}`, 500);
+    if (used) fail('Salt already used, ask again', 409);
+    preview = p;
+  } catch (e) {
+    if (e?.status) throw e;
+    fail(`The factory rejected these economics: ${revertReason(e)}`);
+  }
   const check = predictLaunch({ ...base, creatorSalt: hit.creatorSalt });
-  const qd = Number(quoteDecimals);
-  const startPrice = 1.0001 ** Number(startTick) * 10 ** (18 - qd); // quote per token (tick in the token0 frame)
-  const json = (v) => JSON.parse(JSON.stringify(v, (_, x) => (typeof x === 'bigint' ? x.toString() : x)));
   return reply(200, {
-    chainId,
+    ...common,
     token: hit.tokenChecksum,
     vault: check.vault,
     creatorSalt: hit.creatorSalt,
@@ -771,12 +960,9 @@ async function predict({ query: q }, deps) {
     launchEnabled: enabled,
     configVersion: configVersion.toString(),
     nativeLaunchFee: nativeLaunchFee.toString(),
-    supply: supply.toString(),
-    quote: { address: outQuote(quote), decimals: qd, startTick: Number(startTick), maxBurnPerProcess: maxBurnPerProcess.toString(), defaultCampaignMinimum: defaultCampaignMinimum.toString() },
-    startPrice,
-    startFdv: startPrice * units(supply, 18),
-    deadline: Number(params.deadline),
-    launchParams: json(params),
+    previewSource: 'factory',
+    preview: { buy: sidePreview(preview.buyRates ?? preview[1]), sell: sidePreview(preview.sellRates ?? preview[2]) },
+    launchParams: toJson(params),
     tx: { to: d.factory, value: nativeLaunchFee.toString(), from: creator, data: encodeFunctionData({ abi: LAUNCH_FACTORY_ABI, functionName: 'createLaunch', args: [params] }) },
   });
 }

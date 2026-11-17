@@ -3,17 +3,19 @@
 // built yet). Each row opens the token in the hub, with its official and community campaigns.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Boxes, Rocket, Search, Flame, Users } from 'lucide-react';
+import { Boxes, Rocket, Search, Flame, Users, Gift } from 'lucide-react';
 import { Card, Badge, EmptyState, PageHeader, Button } from '../../themes/place/components/ui';
 import { QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useLaunchTokens } from '../hooks.js';
 import { TokenLogo, launchNewPath, launchTokenPath } from './parts.jsx';
 import { money } from './TokenCard.jsx';
-import { tokenShares } from '../economy.js';
+import { tokenEconomy } from '../economy.js';
 import { compact } from '../format.js';
 
 function ProjectRow({ t }) {
-  const shares = tokenShares(t.economics);
+  const econ = tokenEconomy(t);
+  const shares = econ?.shares;
+  const rewards = shares && shares.holders + shares.traders > 0;
   return (
     <div className="pl-projects-row">
       <Link to={`/token/${t.address}`} className="pl-projects-main">
@@ -29,17 +31,27 @@ function ProjectRow({ t }) {
         <Badge tone="accent">
           <Rocket size={11} /> Launched on Place
         </Badge>
+        {econ?.type === 'economy' && (
+          <Badge tone="neutral">
+            Tax {econ.buyTax}% / {econ.sellTax}%
+          </Badge>
+        )}
+        {rewards && (
+          <Badge tone="success">
+            <Gift size={11} /> Rewards
+          </Badge>
+        )}
         {shares?.burn > 0 && (
           <Badge tone="success">
-            <Flame size={11} /> {shares.burn}% burn
+            <Flame size={11} /> Burn
           </Badge>
         )}
-        {shares?.fund > 0 && (
+        {shares?.community > 0 && (
           <Badge tone="neutral">
-            <Users size={11} /> {shares.fund}% fund
+            <Users size={11} /> {econ.generation === 2 ? 'Community fund' : 'Community pool'}
           </Badge>
         )}
-        {t.legacy && <Badge tone="neutral">0.1.0</Badge>}
+        {t.generation < 3 && <Badge tone="neutral">{t.version || (t.generation === 2 ? '0.2.0' : '0.1.0')}</Badge>}
       </span>
       <span className="pl-projects-stat mono">{money(t.marketCapUsd, t.marketCap, t.quote.symbol)}</span>
       <span className="pl-projects-stat mono pl-launch-muted">{compact(t.holders)} holders</span>

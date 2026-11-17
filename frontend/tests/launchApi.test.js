@@ -6,10 +6,8 @@ import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import { profileMessage } from '../src/launch/profile.js';
 import { indexEvents } from '../api/_lib/place/indexer.js';
 import { handlePlace } from '../api/_lib/place/api.js';
-import { LAUNCH_FACTORY_ABI } from '../src/launch/abi.js';
 import { LEGACY_CREATOR_VAULT_ABI } from '../src/launch/abi.legacy.js';
-import { predictLaunch } from '../src/launch/vanity.js';
-import { l2Logs, fakeNode, freshDb, CHAIN, D, CUR, B0, B20, ERC, CREATOR, TRADER, DEAD, USDC, timeOf } from './launchFixture.js';
+import { l2Logs, fakeNode, freshDb, CHAIN, D, B0, B20, ERC, CREATOR, TRADER, DEAD, USDC, timeOf } from './launchFixture.js';
 
 const NOW = Number(timeOf(B0 + 2000n));
 const ETH_USD = 2000;
@@ -202,58 +200,7 @@ test('creator panel (0.1.0 legacy vault): live vault state, claim dry run → mi
   assert.equal((await get('launch/creator', { address: CREATOR, slippageBps: '9000' })).status, 400);
 });
 
-test('predict: mines a salt for the 01 ending (plus a vanity suffix), checks it with the factory, encodes createLaunch', async () => {
-  const reads = {
-    configVersion: 9n,
-    nativeLaunchFee: 500000000000000n,
-    launchCreationEnabled: true,
-    launchSupply: 10n ** 27n,
-    quoteConfig: [true, 18, -200600],
-    quoteLimits: [10n ** 14n, 10n ** 14n],
-    isLaunchSaltUsed: false,
-  };
-  const { get } = await setup({
-    onMulticall: async (contracts) =>
-      contracts.map((c) => {
-        if (c.functionName === 'predictLaunchToken') {
-          const [params, creator] = c.args;
-          return predictLaunch({ kind: params.tokenKind === 2 ? 'b20' : 'erc20', creator, creatorSalt: params.creatorSalt, factory: CUR.factory, tokenDeployer: CUR.tokenDeployer, vaultImplementation: CUR.creatorVaultImplementation }).token;
-        }
-        if (c.functionName in reads) return reads[c.functionName];
-        return { status: 'success', result: c.functionName === 'symbol' ? 'USDC' : 6 };
-      }),
-  });
-  const r = await get('launch/predict', { creator: CREATOR, kind: 'b20', quote: 'eth', name: 'Test', symbol: 'TST', editable: '1', website: 'https://example.com', suffix: 'b' });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.ok(r.body.token.toLowerCase().endsWith('b01'));
-  assert.ok(r.body.token.toLowerCase().startsWith('0xb2000000000000000000'));
-  assert.equal(r.body.tx.value, '500000000000000');
-  const call = decodeFunctionData({ abi: LAUNCH_FACTORY_ABI, data: r.body.tx.data });
-  assert.equal(call.functionName, 'createLaunch');
-  assert.equal(call.args[0].creatorSalt, r.body.creatorSalt);
-  assert.deepEqual(call.args[0].metadataKeys, ['website']);
-  assert.equal(call.args[0].expectedConfigVersion, 9n);
-  assert.ok(Math.abs(r.body.startFdv - 1.943) < 0.001);
-  assert.equal((await get('launch/predict', { creator: CREATOR, name: 'x', symbol: 'TST', suffix: 'zz' })).status, 400);
-  assert.equal((await get('launch/predict', { creator: CREATOR, name: 'x', symbol: 'TST', suffix: 'abc' })).status, 400);
-  assert.equal((await get('launch/predict', { creator: CREATOR, name: 'x', symbol: 'TST', website: 'http://plain' })).status, 400);
-
-  // The form passes its salt back: the address stays the same while details change.
-  const again = await get('launch/predict', { creator: CREATOR, kind: 'b20', quote: 'eth', name: 'Renamed', symbol: 'TST2', suffix: 'b', salt: r.body.creatorSalt });
-  assert.equal(again.body.token, r.body.token);
-  assert.equal(again.body.tries, 0);
-  // Three baskets (burn, community fund, the rest to the creator); X accounts share the creator part.
-  const x = await get('launch/predict', { creator: CREATOR, kind: 'b20', quote: 'eth', name: 'X', symbol: 'XX', burnBps: '2000', communityBps: '3000', xShares: '44196397:1500,12:500' });
-  assert.equal(x.status, 200, JSON.stringify(x.body));
-  const econ = decodeFunctionData({ abi: LAUNCH_FACTORY_ABI, data: x.body.tx.data }).args[0].economics;
-  assert.equal(econ.burnBps, 2000);
-  assert.equal(econ.communityBps, 3000);
-  assert.deepEqual(econ.xShares.map((e) => [e.xId, e.bps]), [[44196397n, 1500], [12n, 500]]);
-  assert.equal(x.body.quote.defaultCampaignMinimum, String(10n ** 14n));
-  assert.equal((await get('launch/predict', { creator: CREATOR, name: 'x', symbol: 'TST', burnBps: '6000', communityBps: '5000' })).status, 400);
-  assert.equal((await get('launch/predict', { creator: CREATOR, name: 'x', symbol: 'TST', xShares: '1:6000,2:5000' })).status, 400);
-  assert.equal((await get('launch/predict', { creator: CREATOR, name: 'x', symbol: 'TST', xShares: '@name:100' })).status, 400);
-});
+// predict (0.3.0 economics, local preview before the deploy, factory checks after): tests/launchV3.test.js
 
 test('dashboard: totals, live feed across tokens, sorts and the crypto / stocks filter', async () => {
   const { get } = await setup();

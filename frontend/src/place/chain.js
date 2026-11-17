@@ -2,7 +2,7 @@
 // VITE_PLACE_CHAIN switches it without code changes. Addresses come from deployments.js.
 import { createPublicClient, http, fallback } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
-import { deployment, activeHub } from './deployments.js';
+import { deployment } from './deployments.js';
 
 const env = (typeof import.meta !== 'undefined' && import.meta.env) || {};
 
@@ -25,7 +25,6 @@ export function placeClient() {
 }
 
 export const placeDeployment = () => deployment(PLACE_CHAIN_ID);
-export const placeActiveHub = () => activeHub(PLACE_CHAIN_ID).address;
 export const isTestnet = PLACE_CHAIN_ID !== base.id;
 
 const EXPLORER = PLACE_CHAIN_ID === base.id ? 'https://basescan.org' : 'https://sepolia.basescan.org';

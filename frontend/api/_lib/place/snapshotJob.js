@@ -14,7 +14,8 @@
 import { randomBytes } from 'node:crypto';
 import { PLACE_HUB_ABI } from '../../../src/place/abi.js';
 import { parseCommittedRules, computeTable, canonicalJson } from '../../../src/place/snapshot/index.js';
-import { LAUNCH_FACTORY_ABI, CREATOR_VAULT_ABI } from '../../../src/launch/abi.js';
+import { LAUNCH_FACTORY_ABI } from '../../../src/launch/abi.js';
+import { V020_CREATOR_VAULT_ABI as CREATOR_VAULT_ABI } from '../../../src/launch/abi.legacy.js'; // launch-vault campaigns are 0.1.0 / 0.2.0
 import { launchRulesTemplates } from '../../../src/launch/deployments.js';
 import { launchCampaignRules } from '../../../src/launch/rules.js';
 import { blockAtTime, transfersPage, erc20BalancesAt, nftHoldingsAt, autoExclusions } from './chain.js';

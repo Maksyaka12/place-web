@@ -184,7 +184,7 @@ export default function RewardsPage() {
                       title="Nothing to claim right now"
                       description="Rewards appear here when a snapshot that includes this wallet is published"
                       action={
-                        <Button as={Link} to="/">
+                        <Button as={Link} to="/hub">
                           Explore campaigns
                         </Button>
                       }

@@ -1,6 +1,6 @@
 // Copies the Place Launch ABIs from the place-contracts Foundry build into src/launch/abi.js.
-// The ABIs of older releases that are still indexed (0.1.0-testnet) live in src/launch/abi.legacy.js.
-// ABIs of older releases that are still indexed (0.1.0-testnet) live in src/launch/abi.legacy.js.
+// ABIs of older releases that are still indexed (0.1.0-testnet, 0.2.0-testnet) live in src/launch/abi.legacy.js:
+// before exporting a release whose events change, copy what the indexer needs of the old one there first.
 // Run after changing a launch contract:
 //   (cd ../../place-contracts && forge build) && node scripts/exportLaunchAbi.mjs [path/to/place-contracts/out]
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -18,6 +18,8 @@ const contracts = {
   B20_FACTORY_ABI: 'IB20.sol/IB20Factory.json',
   PLACE_STAKING_ABI: 'PlaceStaking.sol/PlaceStaking.json',
   REWARD_TOKEN_REGISTRY_ABI: 'PlaceRewardTokenRegistry.sol/PlaceRewardTokenRegistry.json',
+  REWARDS_DISTRIBUTOR_ABI: 'PlaceRewardsDistributor.sol/PlaceRewardsDistributor.json',
+  COMMUNITY_VAULT_ABI: 'PlaceCommunityVault.sol/PlaceCommunityVault.json',
 };
 // Only the pieces of the Uniswap v4 PoolManager the indexer and API use.
 const POOL_MANAGER_PICK = ['Swap', 'Initialize', 'extsload'];

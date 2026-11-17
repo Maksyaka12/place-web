@@ -5,12 +5,12 @@ import { Badge } from '../../themes/place/components/ui';
 import { useTokenMeta } from '../hooks.js';
 import { imageUrl } from '../meta.js';
 import { pct, isNew } from '../format.js';
-import { CREATOR_FEE_PCT } from '../economy.js';
+import { BUCKETS } from '../economy.js';
 
-export const launchPath = () => '/launch';
+export const launchPath = () => '/';
 export const launchTokenPath = (address) => `/launch/token/${String(address).toLowerCase()}`;
 export const launchNewPath = () => '/launch/new';
-export const consolePath = (section) => (section ? `/launch/profile/${section}` : '/launch/profile');
+export const consolePath = (section) => (section ? `/profile/${section}` : '/profile');
 
 /** Two letters for tokens without a logo. */
 const initials = (symbol, name) => String(symbol || name || '?').replace(/^\$/, '').slice(0, 2).toUpperCase();
@@ -75,31 +75,29 @@ export function Stat({ label, value, sub, className = '' }) {
   );
 }
 
-/** The creator part of every trade as a stacked bar: burn, community fund, X accounts, the creator. */
-export function EconomicsBar({ burn, fund, x = 0, you, youLabel = 'You' }) {
-  const parts = [
-    { key: 'burn', label: 'Burn', pct: burn },
-    { key: 'fund', label: 'Community fund', pct: fund },
-    { key: 'x', label: 'X accounts', pct: Math.round(x * 100) / 100 },
-    { key: 'you', label: youLabel, pct: Math.round(you * 100) / 100 },
-  ].filter((p) => p.pct > 0);
+/**
+ * Shares of the buckets (creator, holders, traders, burn, community; % that add up to 100) as one bar with a legend.
+ * `labels` renames buckets (0.2.0 calls the community pool the community fund).
+ */
+export function AllocationBar({ shares, labels = {}, legend = true }) {
+  const parts = BUCKETS.filter((b) => Number(shares?.[b.id]) > 0);
   return (
-    <div className="pl-launch-econ-bar-wrap">
-      <div className="pl-launch-econ-bar" aria-hidden="true">
-        {parts.map((p) => (
-          <span key={p.key} className={`pl-launch-econ-seg ${p.key}`} style={{ width: `${p.pct}%` }} />
+    <div className="pl-econ-palette pl-launch-alloc">
+      <div className="pl-launch-preview-bar" aria-hidden="true">
+        {parts.map((b) => (
+          <span key={b.id} className={`pl-econ-fill ${b.tone}`} style={{ width: `${shares[b.id]}%` }} />
         ))}
       </div>
-      <div className="pl-launch-econ-legend">
-        {parts.map((p) => (
-          <span key={p.key}>
-            <i className={`pl-launch-econ-dot ${p.key}`} />
-            {p.label} <span className="mono pl-launch-strong">{p.pct}%</span>
-            <span className="pl-launch-muted mono"> · {Number(((p.pct / 100) * CREATOR_FEE_PCT).toFixed(4))}% of each trade</span>
-          </span>
-        ))}
-      </div>
+      {legend && (
+        <div className="pl-launch-econ-legend">
+          {parts.map((b) => (
+            <span key={b.id}>
+              <i className={`pl-econ-dot ${b.tone}`} />
+              {labels[b.id] || b.short} <span className="mono pl-launch-strong">{Number(Number(shares[b.id]).toFixed(2))}%</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
-

@@ -3,23 +3,28 @@
 // block order, in one transaction).
 //
 // Two passes per range:
-// 1. the static contracts (factory, hook, announcements, X registry) come with the hub's own getLogs; a
-//    Launched there introduces a token, its vault and its pool id;
-// 2. dynamic sources for the same range: every known launch token (Transfer, metadata) and vault, and the
-//    PoolManager's Swap/Initialize filtered by the launch pool ids. Newly found tokens join this pass, so the
-//    launch transaction's own transfers and dev-buy swap are never missed.
+// 1. the static contracts (factory, hook, announcements, X registry, staking, reward routes, and for 0.3.0 the
+//    FeeEscrow and the rewards distributor) come with the hub's own getLogs; a Launched there introduces a
+//    token, its vaults and its pool id;
+// 2. dynamic sources for the same range: every known launch token (Transfer, metadata), creator vault and
+//    community vault, and the PoolManager's Swap/Initialize filtered by the launch pool ids. Newly found tokens
+//    join this pass, so the launch transaction's own transfers and dev-buy swap are never missed.
 // Swaps get their trader (the transaction sender, since the router is the PoolManager caller) and block time.
 // Every write is idempotent: totals change only when the row keyed by (block, log_index) is new.
 //
-// Releases (src/launch/deployments.js): the current one (0.2.0: burn / community fund baskets, PlaceStaking)
-// and legacy ones (0.1.0: buyback / rewards) are read side by side. Factory and vault events are decoded with
-// their release's ABI, since some events keep their types but rename their fields (Collected).
-import { parseEventLogs, parseAbi } from 'viem';
+// Releases (src/launch/deployments.js) are read side by side, each with the ABI of its generation:
+//   1 = 0.1.0 (buyback / rewards vault), 2 = 0.2.0 (burn / community fund vault, process()),
+//   3 = 0.3.0 (Standard / Economy, five baskets, FeeEscrow burn, PlaceRewardsDistributor, PlaceCommunityVault).
+// Some events keep their name but change their fields between generations (Collected, Trade, CreatorVaultCreated).
+import { parseEventLogs, parseAbi, keccak256, encodeAbiParameters } from 'viem';
 import {
   LAUNCH_FACTORY_ABI,
   LAUNCH_OPERATIONS_EVENTS,
   LAUNCH_HOOK_ABI,
   CREATOR_VAULT_ABI,
+  COMMUNITY_VAULT_ABI,
+  FEE_ESCROW_ABI,
+  REWARDS_DISTRIBUTOR_ABI,
   ANNOUNCEMENT_REGISTRY_ABI,
   X_RECIPIENT_REGISTRY_ABI,
   LAUNCH_TOKEN_ABI,
@@ -27,8 +32,17 @@ import {
   PLACE_STAKING_ABI,
   REWARD_TOKEN_REGISTRY_ABI,
 } from '../../../src/launch/abi.js';
-import { LEGACY_FACTORY_EVENTS, LEGACY_OPERATIONS_EVENTS, LEGACY_CREATOR_VAULT_ABI } from '../../../src/launch/abi.legacy.js';
-import { launchDeployment, launchReleases, launchStartBlock } from '../../../src/launch/deployments.js';
+import {
+  LEGACY_FACTORY_EVENTS,
+  LEGACY_OPERATIONS_EVENTS,
+  LEGACY_CREATOR_VAULT_ABI,
+  V020_FACTORY_EVENTS,
+  V020_FACTORY_READS,
+  V020_OPERATIONS_EVENTS,
+  V020_HOOK_EVENTS,
+  V020_CREATOR_VAULT_ABI,
+} from '../../../src/launch/abi.legacy.js';
+import { launchDeployment, launchReleases, deployedReleases, launchStartBlock } from '../../../src/launch/deployments.js';
 import { priceFromSqrt, swapSide } from '../../../src/launch/market.js';
 import { retry } from '../place/chain.js';
 
@@ -37,20 +51,40 @@ const TOPIC_CHUNK = 100;
 const RPC_CHUNK = 50;
 const ZERO = '0x0000000000000000000000000000000000000000';
 const KIND = { 1: 'erc20', 2: 'b20' };
+export const EPOCH = 86_400;
 
 const events = (abi) => abi.filter((x) => x.type === 'event');
-const FACTORY_EVENTS = [...events(LAUNCH_FACTORY_ABI), ...LAUNCH_OPERATIONS_EVENTS];
-const LEGACY_FACTORY = [...LEGACY_FACTORY_EVENTS, ...LEGACY_OPERATIONS_EVENTS];
-const SHARED_EVENTS = [...events(LAUNCH_HOOK_ABI), ...events(ANNOUNCEMENT_REGISTRY_ABI), ...events(X_RECIPIENT_REGISTRY_ABI)];
+
+/** Which ABI generation a release version uses: 1 (0.1.x), 2 (0.2.x), 3 (0.3.0 and later). */
+export function releaseGeneration(version) {
+  const v = String(version || '');
+  if (v.startsWith('0.1.')) return 1;
+  if (v.startsWith('0.2.')) return 2;
+  return 3;
+}
+
+const SHARED = [...events(ANNOUNCEMENT_REGISTRY_ABI), ...events(X_RECIPIENT_REGISTRY_ABI)];
+const GEN = {
+  1: { factory: [...LEGACY_FACTORY_EVENTS, ...LEGACY_OPERATIONS_EVENTS], hook: V020_HOOK_EVENTS, vault: events(LEGACY_CREATOR_VAULT_ABI) },
+  2: { factory: [...V020_FACTORY_EVENTS, ...V020_OPERATIONS_EVENTS], hook: V020_HOOK_EVENTS, vault: events(V020_CREATOR_VAULT_ABI) },
+  3: {
+    factory: [...events(LAUNCH_FACTORY_ABI), ...LAUNCH_OPERATIONS_EVENTS],
+    hook: events(LAUNCH_HOOK_ABI),
+    vault: events(CREATOR_VAULT_ABI),
+    community: events(COMMUNITY_VAULT_ABI),
+    escrow: events(FEE_ESCROW_ABI),
+    distributor: events(REWARDS_DISTRIBUTOR_ABI),
+  },
+};
 const STAKING_EVENTS = events(PLACE_STAKING_ABI);
 const REGISTRY_EVENTS = events(REWARD_TOKEN_REGISTRY_ABI).filter((e) => e.name.startsWith('Route'));
 const TOKEN_EVENTS = events(LAUNCH_TOKEN_ABI);
-const VAULT_EVENTS = events(CREATOR_VAULT_ABI);
-const LEGACY_VAULT_EVENTS = events(LEGACY_CREATOR_VAULT_ABI);
-const vaultEvents = (version, current) => (version === current ? VAULT_EVENTS : LEGACY_VAULT_EVENTS);
 const PM_EVENTS = events(POOL_MANAGER_ABI);
 const SWAP = PM_EVENTS.find((e) => e.name === 'Swap');
 const INIT = PM_EVENTS.find((e) => e.name === 'Initialize');
+// Reads every generation shares (same signature): token kind and creator rights.
+const FACTORY_READS = V020_FACTORY_READS;
+const TAX_KINDS = { ProtocolFeeCredited: 'protocol', AntiSnipeFeeCredited: 'anti_snipe', CreatorTaxCredited: 'creator', CommunityTaxCredited: 'community', BurnTaxCredited: 'burn', RewardTaxCredited: 'reward' };
 
 const READ_ABI = parseAbi([
   'function name() view returns (string)',
@@ -69,30 +103,49 @@ const chunks = (list, n) => {
 };
 const byOrder = (a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
 
-/** Static launch contracts of every release whose logs come with the hub's getLogs. */
+/** PlaceRewardsDistributor.economyStreamId(token, kind): the stream (and FeeEscrow account) of a launch basket. */
+export function economyStreamId(token, kind) {
+  return keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint8' }], [token, Number(kind)]));
+}
+
+/** Static launch contracts of every deployed release whose logs come with the hub's getLogs. */
 export function launchStaticAddresses(chainId) {
-  return launchReleases(chainId).flatMap((r) => [
-    r.factory,
-    r.hook,
-    r.announcementRegistry,
-    r.xRecipientRegistry,
-    ...(r.legacy ? [] : [r.staking, r.rewardTokenRegistry].filter(Boolean)),
-  ]);
+  const out = [];
+  for (const r of deployedReleases(chainId)) {
+    const gen = releaseGeneration(r.version);
+    out.push(r.factory, r.hook, r.announcementRegistry, r.xRecipientRegistry);
+    if (gen >= 2) out.push(r.staking, r.rewardTokenRegistry);
+    if (gen >= 3) out.push(r.feeEscrow, r.rewardsDistributor);
+  }
+  return [...new Set(out.filter(Boolean))];
+}
+
+/** Every rewards distributor, creator / community vault of the indexed releases: not traders, not holders. */
+export function distributorAddresses(chainId) {
+  return [...new Set(deployedReleases(chainId).map((r) => r.rewardsDistributor).filter(Boolean))];
 }
 
 /** Decodes static logs, each with its own release's ABI, and tags them with that release. */
 function decodeStatic(chainId, logs) {
   const out = [];
-  for (const r of launchReleases(chainId)) {
+  const taken = new Set();
+  for (const r of deployedReleases(chainId)) {
+    const gen = GEN[releaseGeneration(r.version)];
     const take = (addrs, abi) => {
-      const mine = logs.filter((l) => addrs.includes(lower(l.address)));
+      const set = new Set(addrs.filter((a) => a && !taken.has(a)));
+      if (!set.size) return;
+      set.forEach((a) => taken.add(a));
+      const mine = logs.filter((l) => set.has(lower(l.address)));
       if (!mine.length) return;
       for (const l of parseEventLogs({ abi, logs: mine, strict: false })) if (l.eventName) out.push(Object.assign(l, { release: r }));
     };
-    take([r.factory], r.legacy ? LEGACY_FACTORY : FACTORY_EVENTS);
-    take([r.hook, r.announcementRegistry, r.xRecipientRegistry], SHARED_EVENTS);
-    if (!r.legacy && r.staking) take([r.staking], STAKING_EVENTS);
-    if (!r.legacy && r.rewardTokenRegistry) take([r.rewardTokenRegistry], REGISTRY_EVENTS);
+    take([r.factory], gen.factory);
+    take([r.hook], gen.hook);
+    take([r.announcementRegistry, r.xRecipientRegistry], SHARED);
+    if (r.staking) take([r.staking], STAKING_EVENTS);
+    if (r.rewardTokenRegistry) take([r.rewardTokenRegistry], REGISTRY_EVENTS);
+    if (gen.escrow && r.feeEscrow) take([r.feeEscrow], gen.escrow);
+    if (gen.distributor && r.rewardsDistributor) take([r.rewardsDistributor], gen.distributor);
   }
   return out;
 }
@@ -104,22 +157,48 @@ function decodeStatic(chainId, logs) {
  */
 export async function collectLaunchLogs({ db, client, chainId, fromBlock, toBlock, staticLogs }) {
   const d = launchDeployment(chainId);
-  if (!d || toBlock < launchStartBlock(chainId)) return { logs: [], ctx: null };
-  const legacyVersion = launchReleases(chainId).find((r) => r.legacy)?.version ?? d.version;
+  const start = launchStartBlock(chainId);
+  if (!d || start == null || toBlock < start) return { logs: [], ctx: null };
+  const releases = launchReleases(chainId);
+  const oldest = releases.find((r) => releaseGeneration(r.version) === 1)?.version ?? releases[releases.length - 1].version;
   const decoded = decodeStatic(chainId, staticLogs);
 
-  // New launches in this range: token, pool, vault, then what the chain says about them.
+  // New launches in this range: token, pool, vaults, economics, then what the chain says about them.
   const fresh = new Map();
+  const put = (t, v) => fresh.set(t, { ...(fresh.get(t) || {}), ...v });
   for (const l of decoded) {
     if (lower(l.address) !== l.release.factory) continue;
     const t = lower(l.args.token);
-    if (l.eventName === 'Launched') {
-      fresh.set(t, { ...(fresh.get(t) || {}), token: t, version: l.release.version, release: l.release, poolId: lower(l.args.poolId), creator: lower(l.args.originalCreator), quote: lower(l.args.quoteToken), supply: l.args.launchSupply, tickSpacing: Number(l.args.tickSpacing), block: l.blockNumber, tx: lower(l.transactionHash) });
-    } else if (l.eventName === 'CreatorVaultCreated') {
-      const e = l.release.legacy
-        ? { buybackBps: Number(l.args.buybackBps), buybackBurn: l.args.buybackBurn, rewardsBps: Number(l.args.rewardsBps) }
-        : { burnBps: Number(l.args.burnBps), communityBps: Number(l.args.communityBps) };
-      fresh.set(t, { ...(fresh.get(t) || {}), vault: lower(l.args.vault), ...e });
+    const gen = releaseGeneration(l.release.version);
+    switch (l.eventName) {
+      case 'Launched':
+        put(t, { token: t, version: l.release.version, gen, release: l.release, poolId: lower(l.args.poolId), creator: lower(l.args.originalCreator), quote: lower(l.args.quoteToken), supply: l.args.launchSupply, tickSpacing: Number(l.args.tickSpacing), block: l.blockNumber, tx: lower(l.transactionHash) });
+        break;
+      case 'CreatorVaultCreated':
+        if (gen === 1) put(t, { vault: lower(l.args.vault), buybackBps: Number(l.args.buybackBps), buybackBurn: l.args.buybackBurn, rewardsBps: Number(l.args.rewardsBps) });
+        else if (gen === 2) put(t, { vault: lower(l.args.vault), burnBps: Number(l.args.burnBps), communityBps: Number(l.args.communityBps) });
+        else put(t, { vault: lower(l.args.vault) });
+        break;
+      case 'CommunityVaultCreated':
+        put(t, { communityVault: lower(l.args.vault) });
+        break;
+      case 'LaunchEconomyConfigured':
+        put(t, {
+          economy: {
+            launchType: Number(l.args.launchType) === 1 ? 'economy' : 'standard',
+            creatorVault: lower(l.args.creatorVault),
+            communityVault: l.args.communityVault === ZERO ? null : lower(l.args.communityVault),
+            rewardToken: lower(l.args.rewardToken),
+            minHolding: l.args.minHolding,
+            minTraderDailyVolume: l.args.minTraderDailyVolume,
+          },
+        });
+        break;
+      case 'LaunchTaxConfigured':
+        if (gen >= 3) put(t, { tax: l.args.taxConfiguration, antiSnipe: l.args.antiSnipeEnabled, configVersion: l.args.configVersion });
+        break;
+      default:
+        break;
     }
   }
   const newTokens = [...fresh.values()].filter((t) => t.poolId);
@@ -127,30 +206,38 @@ export async function collectLaunchLogs({ db, client, chainId, fromBlock, toBloc
 
   // Tokens indexed before launch_economy existed are 0.1.0 (the only release then).
   const known = await db.query(
-    `select t.token, t.pool_id, t.vault, t.quote, t.token_is_currency0, coalesce(q.decimals, 18) as quote_decimals, e.version
+    `select t.token, t.pool_id, t.vault, t.quote, t.token_is_currency0, coalesce(q.decimals, 18) as quote_decimals, e.version, e.community_vault
      from launch_tokens t left join launch_quotes q on q.chain_id = t.chain_id and q.quote = t.quote
      left join launch_economy e on e.chain_id = t.chain_id and e.token = t.token where t.chain_id = $1`,
     [chainId]
   );
-  const tokens = new Map(known.map((r) => [r.token, { token: r.token, poolId: r.pool_id, vault: r.vault, quote: r.quote, tokenIsCurrency0: r.token_is_currency0, quoteDecimals: Number(r.quote_decimals), version: r.version || legacyVersion }]));
+  const tokens = new Map(
+    known.map((r) => {
+      const version = r.version || oldest;
+      return [r.token, { token: r.token, poolId: r.pool_id, vault: r.vault, communityVault: r.community_vault || null, quote: r.quote, tokenIsCurrency0: r.token_is_currency0, quoteDecimals: Number(r.quote_decimals), version, gen: releaseGeneration(version) }];
+    })
+  );
   const quoteDecimals = new Map((await db.query('select quote, decimals from launch_quotes where chain_id = $1', [chainId])).map((r) => [r.quote, Number(r.decimals)]));
   for (const l of decoded) if (l.eventName === 'QuoteRegistered') quoteDecimals.set(lower(l.args.quoteToken), Number(l.args.quoteDecimals));
   for (const t of newTokens) {
-    tokens.set(t.token, { token: t.token, poolId: t.poolId, vault: t.vault, quote: t.quote, tokenIsCurrency0: t.tokenIsCurrency0, quoteDecimals: quoteDecimals.get(t.quote) ?? 18, version: t.version });
+    tokens.set(t.token, { token: t.token, poolId: t.poolId, vault: t.vault, communityVault: t.communityVault ?? t.economy?.communityVault ?? null, quote: t.quote, tokenIsCurrency0: t.tokenIsCurrency0, quoteDecimals: quoteDecimals.get(t.quote) ?? 18, version: t.version, gen: t.gen });
   }
 
   let dynamic = [];
   if (tokens.size) {
     const list = [...tokens.values()];
-    const addrs = [...list.map((t) => t.token), ...list.map((t) => t.vault).filter(Boolean)];
+    const addrs = [...list.map((t) => t.token), ...list.map((t) => t.vault).filter(Boolean), ...list.map((t) => t.communityVault).filter(Boolean)];
     const raw = [];
     for (const part of chunks(addrs, ADDRESS_CHUNK)) raw.push(...(await client.getLogs({ address: part, fromBlock, toBlock })));
     dynamic.push(...parseEventLogs({ abi: TOKEN_EVENTS, logs: raw.filter((l) => tokens.has(lower(l.address))), strict: false }));
-    for (const version of new Set(list.map((t) => t.version))) {
-      const vaults = new Set(list.filter((t) => t.vault && t.version === version).map((t) => t.vault));
+    for (const gen of new Set(list.map((t) => t.gen))) {
+      const vaults = new Set(list.filter((t) => t.vault && t.gen === gen).map((t) => t.vault));
       const mine = raw.filter((l) => vaults.has(lower(l.address)));
-      if (mine.length) dynamic.push(...parseEventLogs({ abi: vaultEvents(version, d.version), logs: mine, strict: false }));
+      if (mine.length) dynamic.push(...parseEventLogs({ abi: GEN[gen].vault, logs: mine, strict: false }));
     }
+    const community = new Set(list.map((t) => t.communityVault).filter(Boolean));
+    const cmine = raw.filter((l) => community.has(lower(l.address)));
+    if (cmine.length) dynamic.push(...parseEventLogs({ abi: GEN[3].community, logs: cmine, strict: false }));
     for (const ids of chunks(list.map((t) => t.poolId), TOPIC_CHUNK)) {
       dynamic.push(...(await client.getLogs({ address: d.poolManager, event: SWAP, args: { id: ids }, fromBlock, toBlock })));
     }
@@ -176,20 +263,24 @@ export async function collectLaunchLogs({ db, client, chainId, fromBlock, toBloc
     }
   }
 
-  const timed = new Set(['Launched', 'Swap', 'AnnouncementPosted', ...[...VAULT_EVENTS, ...LEGACY_VAULT_EVENTS, ...STAKING_EVENTS].map((e) => e.name)]);
-  const times = await blockTimes(client, [...new Set(logs.filter((l) => timed.has(l.eventName)).map((l) => l.blockNumber))]);
+  const untimed = new Set(['Transfer', 'NameUpdated', 'ContractURIUpdated', 'ExtraMetadataUpdated', 'B20ExtraMetadataUpdated', 'Initialize']);
+  const times = await blockTimes(client, [...new Set(logs.filter((l) => !untimed.has(l.eventName)).map((l) => l.blockNumber))]);
   const senders = await txSenders(client, [...new Set(logs.filter((l) => l.eventName === 'Swap').map((l) => l.transactionHash))]);
-  const byPool = new Map([...tokens.values()].map((t) => [t.poolId, t]));
-  const byVault = new Map([...tokens.values()].filter((t) => t.vault).map((t) => [t.vault, t]));
-  return { logs, ctx: { chainId, d, fresh, times, senders, byPool, byVault, tokens } };
+  const all = [...tokens.values()];
+  const byPool = new Map(all.map((t) => [t.poolId, t]));
+  const byVault = new Map(all.filter((t) => t.vault).map((t) => [t.vault, t]));
+  const byCommunity = new Map(all.filter((t) => t.communityVault).map((t) => [t.communityVault, t]));
+  // Swaps of these executors are the platform's own (reward conversions, fund swaps): no trader rewards.
+  const notTraders = new Set([...distributorAddresses(chainId), ...byVault.keys(), ...byCommunity.keys()]);
+  return { logs, ctx: { chainId, d, fresh, times, senders, byPool, byVault, byCommunity, tokens, notTraders } };
 }
 
 /** Kind, editability, name, symbol and contract URI of new launch tokens; their vault's X shares. */
 async function readNewTokens(client, list) {
   // launchTokenKind, creatorRights and xShares have the same signature in every release.
   const calls = list.flatMap((t) => [
-    { address: t.release.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'launchTokenKind', args: [t.token] },
-    { address: t.release.factory, abi: LAUNCH_FACTORY_ABI, functionName: 'creatorRights', args: [t.token] },
+    { address: t.release.factory, abi: FACTORY_READS, functionName: 'launchTokenKind', args: [t.token] },
+    { address: t.release.factory, abi: FACTORY_READS, functionName: 'creatorRights', args: [t.token] },
     { address: t.token, abi: READ_ABI, functionName: 'name' },
     { address: t.token, abi: READ_ABI, functionName: 'symbol' },
     { address: t.token, abi: READ_ABI, functionName: 'contractURI' },
@@ -248,10 +339,22 @@ export async function insertFreshTokens(q, ctx) {
         t.block.toString(), t.tx, iso(ctx.times.get(t.block) ?? 0n),
       ]
     );
+    const e = t.economy;
+    const x = t.tax;
     await q(
-      `insert into launch_economy (chain_id, token, version, burn_bps, community_bps, updated_block) values ($1, $2, $3, $4, $5, $6)
+      `insert into launch_economy (chain_id, token, version, burn_bps, community_bps, updated_block, launch_type, config_version, buy_tax_rate,
+         sell_tax_rate, creator_share, holders_share, traders_share, burn_share, community_share, min_holding, min_trader_volume, reward_token,
+         creator_vault, community_vault, anti_snipe)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
        on conflict (chain_id, token) do nothing`,
-      [ctx.chainId, t.token, t.version, t.burnBps ?? null, t.communityBps ?? null, t.block.toString()]
+      [
+        ctx.chainId, t.token, t.version, t.burnBps ?? null, t.communityBps ?? null, t.block.toString(),
+        e?.launchType ?? null, t.configVersion?.toString() ?? null,
+        x ? Number(x.buyTaxRate) : null, x ? Number(x.sellTaxRate) : null, x ? Number(x.creatorAllocationShare) : null, x ? Number(x.holderAllocationShare) : null,
+        x ? Number(x.traderAllocationShare) : null, x ? Number(x.burnAllocationShare) : null, x ? Number(x.communityAllocationShare) : null,
+        e ? e.minHolding.toString() : null, e ? e.minTraderDailyVolume.toString() : null, e ? e.rewardToken : null,
+        e?.creatorVault ?? (t.gen >= 3 ? t.vault ?? null : null), e?.communityVault ?? t.communityVault ?? null, t.antiSnipe ?? null,
+      ]
     );
   }
 }
@@ -334,8 +437,8 @@ export async function applyLaunchLog(q, log, ctx) {
     }
   }
 
-  // Creator vaults
-  const owner = ctx.byVault.get(addr);
+  // Creator vaults and (0.3.0) community vaults share launch_vault_events, told apart by the vault address.
+  const owner = ctx.byVault.get(addr) || ctx.byCommunity.get(addr);
   if (owner) {
     const row = (kind, amount, amount2, account, ref, data) =>
       q(
@@ -345,14 +448,18 @@ export async function applyLaunchLog(q, log, ctx) {
       );
     switch (log.eventName) {
       case 'Collected':
-        return 'toBurn' in a
-          ? row('collected', a.amount, null, null, null, { toBurn: a.toBurn, toCommunity: a.toCommunity, toX: a.toX, toCreator: a.toCreator })
-          : row('collected', a.amount, null, null, null, { toBuyback: a.toBuyback, toRewards: a.toRewards, toX: a.toX, toCreator: a.toCreator });
+        if ('toBurn' in a) return row('collected', a.amount, null, null, null, { toBurn: a.toBurn, toCommunity: a.toCommunity, toX: a.toX, toCreator: a.toCreator });
+        if ('toBuyback' in a) return row('collected', a.amount, null, null, null, { toBuyback: a.toBuyback, toRewards: a.toRewards, toX: a.toX, toCreator: a.toCreator });
+        if ('toX' in a) return row('collected', a.amount, null, null, null, { toX: a.toX, toCreator: a.toCreator });
+        return row('fund_collected', a.amount); // PlaceCommunityVault.collect()
       case 'Burned':
         return row('burned', a.quoteIn, a.tokenOut, a.caller);
       case 'FundSwapped':
         return row('fund_swapped', a.amountIn, a.amountOut, null, null, { fundAsset: lower(a.fundAsset), rewardToken: lower(a.rewardToken) });
       case 'FundCampaignCreated':
+        if ('streamId' in a) {
+          return row('fund_stream', a.rewardPerEpoch, a.paid, a.rewardToken, lower(a.streamId), { kind: Number(a.kind), epochCount: a.epochCount, isDefault: a.isDefault });
+        }
         return row('fund_campaign', a.pool, a.paid, a.rewardToken, a.campaignId, { isDefault: a.isDefault });
       case 'FundStakingCreated':
         return row('fund_staking', a.paid, a.rewardPerEpoch, a.rewardToken, lower(a.stakingVaultId), { epochCount: a.epochCount });
@@ -383,11 +490,13 @@ export async function applyLaunchLog(q, log, ctx) {
     }
   }
 
-  // PlaceStaking (every program, whatever token it is for)
-  if (log.release && !log.release.legacy && addr === log.release.staking) return applyStakingLog(q, log, ctx, at(), key);
+  const gen = log.release ? releaseGeneration(log.release.version) : null;
 
-  // The reward token registry (white list of community-fund swaps)
-  if (log.release && !log.release.legacy && addr === log.release.rewardTokenRegistry) {
+  // PlaceStaking (every program, whatever token it is for)
+  if (log.release && addr === log.release.staking) return applyStakingLog(q, log, ctx, at(), key);
+
+  // The reward token registry (white list of reward and community-fund swaps)
+  if (log.release && addr === log.release.rewardTokenRegistry) {
     if (log.eventName !== 'RouteSet' && log.eventName !== 'RouteRemoved') return;
     const set = log.eventName === 'RouteSet';
     await q(
@@ -395,6 +504,37 @@ export async function applyLaunchLog(q, log, ctx) {
        on conflict (chain_id, registry, from_token, to_token) do update set hops = excluded.hops, active = excluded.active, updated_block = excluded.updated_block
        where launch_reward_routes.updated_block <= excluded.updated_block`,
       [chainId, addr, lower(a.from), lower(a.to), set ? json(a.hops) : null, set, block]
+    );
+    return;
+  }
+
+  // 0.3.0 rewards distributor and FeeEscrow
+  if (gen >= 3 && addr === log.release.rewardsDistributor) return applyDistributorLog(q, log, ctx, at(), key);
+  if (gen >= 3 && addr === log.release.feeEscrow) {
+    if (log.eventName !== 'TokensBurned') return;
+    await q(
+      `insert into launch_burns (chain_id, block, log_index, token, caller, amount, tx, at) values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict do nothing`,
+      [...key, lower(a.token), lower(a.caller), a.amount.toString(), lower(log.transactionHash), at()]
+    );
+    return;
+  }
+
+  // 0.3.0 hook: tax credits per basket and the Trade with trader, side and volume.
+  if (gen >= 3 && addr === log.release.hook && TAX_KINDS[log.eventName]) {
+    const t = ctx.byPool.get(lower(a.poolId));
+    if (!t) return;
+    let kind = TAX_KINDS[log.eventName];
+    if (kind === 'reward') {
+      const id = lower(a.account);
+      kind = id === economyStreamId(t.token, 0) ? 'holders' : id === economyStreamId(t.token, 1) ? 'traders' : null;
+      if (!kind) return;
+    }
+    const recipient = lower(a.recipient ?? a.vault ?? a.distributor ?? a.sink) ?? null;
+    const currency = kind === 'burn' ? t.token : lower(a.currency);
+    await q(
+      `insert into launch_tax_credits (chain_id, block, log_index, token, kind, recipient, currency, amount, tx, at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict do nothing`,
+      [...key, t.token, kind, recipient, currency, a.amount.toString(), lower(log.transactionHash), at()]
     );
     return;
   }
@@ -408,7 +548,7 @@ export async function applyLaunchLog(q, log, ctx) {
          on conflict (chain_id, quote) do update set max_burn_per_process = excluded.max_burn_per_process,
            default_campaign_minimum = excluded.default_campaign_minimum, updated_block = excluded.updated_block
          where launch_quote_limits.updated_block <= excluded.updated_block`,
-        [chainId, lower(a.quoteToken), a.maxBurnPerProcess.toString(), a.defaultCampaignMinimum.toString(), block]
+        [chainId, lower(a.quoteToken), a.maxBurnPerProcess?.toString() ?? null, a.defaultCampaignMinimum.toString(), block]
       );
       return;
     case 'QuoteRegistered':
@@ -439,13 +579,16 @@ export async function applyLaunchLog(q, log, ctx) {
     case 'Launched': // inserted by insertFreshTokens before the range's logs
       return;
     case 'CreatorVaultCreated':
-      if (!log.release?.legacy) {
-        await q('update launch_tokens set vault = $3 where chain_id = $1 and token = $2', [chainId, lower(a.token), lower(a.vault)]);
+      if (gen === 1) {
+        await q('update launch_tokens set vault = $3, buyback_bps = coalesce(buyback_bps, $4), buyback_burn = coalesce(buyback_burn, $5), rewards_bps = coalesce(rewards_bps, $6) where chain_id = $1 and token = $2', [
+          chainId, lower(a.token), lower(a.vault), Number(a.buybackBps), a.buybackBurn, Number(a.rewardsBps),
+        ]);
         return;
       }
-      await q('update launch_tokens set vault = $3, buyback_bps = coalesce(buyback_bps, $4), buyback_burn = coalesce(buyback_burn, $5), rewards_bps = coalesce(rewards_bps, $6) where chain_id = $1 and token = $2', [
-        chainId, lower(a.token), lower(a.vault), Number(a.buybackBps), a.buybackBurn, Number(a.rewardsBps),
-      ]);
+      await q('update launch_tokens set vault = $3 where chain_id = $1 and token = $2', [chainId, lower(a.token), lower(a.vault)]);
+      return;
+    case 'CommunityVaultCreated':
+      await q('update launch_economy set community_vault = $3 where chain_id = $1 and token = $2', [chainId, lower(a.token), lower(a.vault)]);
       return;
     case 'LaunchBuyExecuted':
       await q('update launch_tokens set dev_buy_funding = $3, dev_buy_in = $4, dev_buy_out = $5 where chain_id = $1 and token = $2', [
@@ -476,6 +619,23 @@ export async function applyLaunchLog(q, log, ctx) {
            order by block desc, log_index desc limit 1)`,
         [chainId, lower(log.transactionHash), t.token, block, a.quoteFeeAmount.toString(), log.logIndex]
       );
+      if (!('trader' in a)) return; // 0.1.0 / 0.2.0 hooks: fee only
+      const time = ctx.times.get(log.blockNumber) ?? 0n;
+      const epoch = Number(time) === 0 ? 0 : Math.floor(Number(time) / EPOCH);
+      const trader = lower(a.trader);
+      const counted = !ctx.notTraders.has(lower(a.executor)) && !ctx.notTraders.has(trader);
+      const inserted = await q(
+        `insert into launch_trades (chain_id, block, log_index, token, executor, trader, is_buy, quote_volume, quote_fee, epoch, counted, tx, at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict do nothing returning token`,
+        [...key, t.token, lower(a.executor), trader, a.isBuy, a.quoteVolume.toString(), a.quoteFeeAmount.toString(), epoch, counted, lower(log.transactionHash), at()]
+      );
+      if (inserted.length && counted) {
+        await q(
+          `insert into launch_trader_volume (chain_id, token, epoch, trader, volume, trades) values ($1, $2, $3, $4, $5, 1)
+           on conflict (chain_id, token, epoch, trader) do update set volume = launch_trader_volume.volume + excluded.volume, trades = launch_trader_volume.trades + 1`,
+          [chainId, t.token, epoch, trader, a.quoteVolume.toString()]
+        );
+      }
       return;
     }
     case 'AnnouncementPosted':
@@ -493,6 +653,86 @@ export async function applyLaunchLog(q, log, ctx) {
         [chainId, a.xId.toString(), lower(log.eventName === 'Bound' ? a.wallet : a.newWallet), block]
       );
       return;
+    default:
+      return;
+  }
+}
+
+/** PlaceRewardsDistributor: streams, closed epochs, conversions, published roots, claims. */
+async function applyDistributorLog(q, log, ctx, at, key) {
+  const { chainId } = ctx;
+  const a = log.args;
+  const id = lower(a.streamId);
+  const tx = lower(log.transactionHash);
+  const event = (kind, amount, amount2, epoch, data) =>
+    q(
+      `insert into reward_stream_events (chain_id, block, log_index, stream_id, kind, amount, amount2, epoch, data, tx, at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict do nothing returning kind`,
+      [...key, id, kind, amount?.toString() ?? null, amount2?.toString() ?? null, epoch?.toString() ?? null, data ? json(data) : null, tx, at]
+    );
+  switch (log.eventName) {
+    case 'LaunchStreamRegistered':
+      await q(
+        `insert into reward_streams (chain_id, stream_id, distributor, token, kind, economy, reward_token, source, start_epoch, criterion,
+           last_closed_epoch, created_block, created_tx, created_at)
+         values ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (chain_id, stream_id) do nothing`,
+        [chainId, id, lower(log.address), lower(a.token), Number(a.kind), lower(a.rewardToken), lower(a.quote), a.startEpoch.toString(), a.criterion.toString(), (a.startEpoch - 1n).toString(), key[1], tx, at]
+      );
+      return;
+    case 'StreamCreated':
+      await q(
+        `insert into reward_streams (chain_id, stream_id, distributor, token, kind, economy, reward_token, funder, start_epoch, epoch_count,
+           reward_per_epoch, criterion, fee, metadata_uri, last_closed_epoch, created_block, created_tx, created_at)
+         values ($1, $2, $3, $4, $5, false, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) on conflict (chain_id, stream_id) do nothing`,
+        [
+          chainId, id, lower(log.address), lower(a.token), Number(a.kind), lower(a.rewardToken), lower(a.funder), a.startEpoch.toString(), a.epochCount.toString(),
+          a.rewardPerEpoch.toString(), a.criterion.toString(), a.fee.toString(), a.metadataURI, (a.startEpoch - 1n).toString(), key[1], tx, at,
+        ]
+      );
+      return;
+    case 'EpochClosed':
+      await q(
+        `insert into reward_epochs (chain_id, stream_id, epoch, collected, total_funded, tx, at) values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (chain_id, stream_id, epoch) do nothing`,
+        [chainId, id, a.epoch.toString(), a.collected.toString(), a.totalFunded.toString(), tx, at]
+      );
+      await q(
+        `update reward_streams set last_closed_epoch = $3, funded = $4 where chain_id = $1 and stream_id = $2 and (last_closed_epoch is null or last_closed_epoch <= $3)`,
+        [chainId, id, a.epoch.toString(), a.totalFunded.toString()]
+      );
+      return;
+    case 'Converted': {
+      // A conversion funds the stream. Inside closeEpoch the EpochClosed that follows sets the exact total anyway.
+      const inserted = await event('converted', a.amountIn, a.amountOut);
+      if (inserted.length) await q('update reward_streams set funded = funded + $3::numeric where chain_id = $1 and stream_id = $2', [chainId, id, a.amountOut.toString()]);
+      return;
+    }
+    case 'ConversionDeferred':
+      await event('deferred', a.pendingInput, null, null, { reason: a.reason });
+      return;
+    case 'RootPublished': {
+      await event('root', a.cumulativeTotal, null, a.epoch, { root: a.root, uri: a.uri });
+      await q(
+        `update reward_streams set root = $3, root_epoch = $4, allocated = $5, root_uri = $6 where chain_id = $1 and stream_id = $2 and (root_epoch is null or root_epoch <= $4)`,
+        [chainId, id, lower(a.root), a.epoch.toString(), a.cumulativeTotal.toString(), a.uri]
+      );
+      await q(`update reward_tables set status = 'published', tx = coalesce(tx, $5) where chain_id = $1 and stream_id = $2 and epoch = $3 and root = $4`, [chainId, id, a.epoch.toString(), lower(a.root), tx]);
+      return;
+    }
+    case 'RewardClaimed': {
+      const inserted = await q(
+        `insert into reward_claims (chain_id, block, log_index, stream_id, account, amount, cumulative, tx, at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         on conflict do nothing returning stream_id`,
+        [...key, id, lower(a.account), a.amount.toString(), a.cumulativeAmount.toString(), tx, at]
+      );
+      if (inserted.length) await q('update reward_streams set claimed = claimed + $3::numeric where chain_id = $1 and stream_id = $2', [chainId, id, a.amount.toString()]);
+      return;
+    }
+    case 'UnallocatedReclaimed': {
+      const inserted = await event('reclaimed', a.amount, null, null, { funder: lower(a.funder) });
+      if (inserted.length) await q('update reward_streams set reclaimed = reclaimed + $3::numeric where chain_id = $1 and stream_id = $2', [chainId, id, a.amount.toString()]);
+      return;
+    }
     default:
       return;
   }

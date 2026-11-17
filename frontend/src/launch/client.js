@@ -40,11 +40,22 @@ export const launchApi = {
   creator: (q, signal) => get('creator', q, signal),
   predict: (q, signal) => get('predict', q, signal),
   pairs: (signal) => get('pairs', {}, signal),
+  stocks: (signal) => get('stocks', {}, signal),
   stats: (signal) => get('stats', {}, signal),
   profile: (address, signal) => get('profile', { address }, signal),
   fundQuote: (q, signal) => get('fund-quote', q, signal),
   staking: (q = {}, signal) => get('staking', q, signal),
   stakingPosition: (q, signal) => get('staking/position', q, signal),
   keeper: (q = {}, signal) => get('keeper', q, signal),
+  /** 0.3.0: reward token options of a pair (`quote` = address or 'eth'): { tokens: [{ address, symbol, name, decimals, source }] } */
+  rewardTokens: (quote, signal) => get('reward-tokens', { quote }, signal),
+  /** 0.3.0: what `account` can claim over every token (proofs + ready claimMany transactions); `token` narrows it. */
+  rewards: (account, signal, token) => get('rewards', token ? { account, token } : { account }, signal),
+  /** Rewards hub: every reward stream of any token, typed and sorted by source; with `account`, its claims. */
+  hub: (q = {}, signal) => get('hub', q, signal),
+  /** Rewards hub: one stream with its last days and the calls anyone can make. */
+  hubStream: (q, signal) => get('hub/stream', q, signal),
+  /** Rewards hub create form: what a token or collection allows. */
+  hubAsset: (q, signal) => get('hub/asset', q, signal),
   saveProfile: (body) => request('POST', 'profile', { body: { chainId: PLACE_CHAIN_ID, ...body } }),
 };

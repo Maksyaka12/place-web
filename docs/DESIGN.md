@@ -28,7 +28,7 @@ markup and layout. A theme only changes design tokens, type and motion.
    float above the page (menus and modals).
 6. **Numbers in mono.** Amounts, balances, addresses and countdowns use the mono font with tabular figures.
 7. **Mobile is a first-class layout.** Every screen works at 375 px, with no sideways scrolling and nothing hidden
-   behind the bottom bar.
+   behind the top bar.
 8. **Calm and factual.** Short left-aligned headers and plain text. No decorative gradients on cards, no emoji in the
    UI, no marketing shouting.
 
@@ -58,7 +58,7 @@ markup and layout. A theme only changes design tokens, type and motion.
 | Token | Dark | Based | Use |
 |---|---|---|---|
 | `--bg` | `#090A0C` | `#FFFFFF` | Page |
-| `--bg-bar` | `#0B0C0F` | `#FFFFFF` | Header and sidebar |
+| `--bg-bar` | `#0B0C0F` | `#FFFFFF` | Top bar and live trades strip |
 | `--surface` | `#111317` | `#FFFFFF` | Cards, tiles, secondary buttons |
 | `--surface-2` | `#16191E` | `#EEF0F3` | Anything inside a card, hover state |
 | `--surface-3` | `#1D2128` | `#DEE1E7` | Progress track, scrollbar thumb |
@@ -127,9 +127,8 @@ Base size is 15 px.
 | Badge | 11 px; 12 px as a pill | 600 | By tone | Spacing 0.02em |
 | Form label | 12 px | 600 | `--text-2` | |
 | Form input | 14 px | 400 | `--text` | |
-| Sidebar item | 14 px | 500 | `--text-2`, active `--accent` | |
-| Sidebar group label | 11 px | 600 | `--text-3` | All caps, spacing 0.06em |
-| Bottom bar label | 11 px | 500 | `--text-3`, active `--accent` | |
+| Top bar section | 14 px | 500 | `--text-2`, active `--accent` | |
+| Menu item | 14 px | 500 | `--text-2`, hover `--text` | |
 
 Text is 11 px at the smallest. All caps is only for small group labels and Doto labels.
 
@@ -156,23 +155,23 @@ The base unit is 4 px: `--s1` 4 · `--s2` 8 · `--s3` 12 · `--s4` 16 · `--s5` 
 
 ### App shell
 
+There is no sidebar and no bottom bar: everything hangs off one top bar, as on a trading terminal.
+
 | Element | Desktop (1024 px and up) | Mobile (below 1024 px) |
 |---|---|---|
-| Sidebar | Fixed, 248 px; 64 px collapsed | Drawer, 260 px (max 85vw), opened from the header |
-| Header | Sticky, 68 px, side padding 24 px | Sticky, 60 px, side padding 10 px |
-| Bottom bar | Hidden | Fixed, 64 px, 5 tabs (see [Navigation](#navigation)) |
+| Top bar (`.pl-topnav`) | Sticky, 64 px, side padding 24 px: logo + product menu, sections, search, Launch NFT, Launch token, theme, wallet | Sticky, 60 px, side padding 12 px: logo, Launch token (icon), wallet, menu button |
+| Live trades strip | Full width, 40 px, under the top bar on every app page | Same |
+| Menu sheet | — | Slides in from the right, 320 px (max 88vw): search, sections, product menu, theme |
 | Page section | Padding 24 px top, 60 px bottom | Same |
-| Page gutter | 20 px on `.wrap` pages, otherwise 14 px | 14 px |
-| Space under content | 40 px | 90 px, to clear the bottom bar |
+| Page gutter | 16 px | 16 px |
+| Space under content | 40 px | 40 px |
 
 ### Page widths
 
 | Width | Pages |
 |---|---|
-| 1200 px | Launchpad, launch token page (cards and charts need the room) |
-| 1120 px | Launch a token (form and preview), Creator console |
-| 1040 px | Explore, Campaign, Token, My rewards, My campaigns, Agent Zone, Skill, Admin |
-| 760 px | Create |
+| 1536 px | Dashboard, Stocks, launch token page, Launch a token (form and preview), Launch NFT, Profile, every Rewards hub page |
+| 1040 px | Agent Zone, Skill, Admin |
 | 760 px | Docs article (its own shell: top bar, menu, "On this page") |
 | 640 px | Settings |
 | 560 px | Wallet, Account |
@@ -185,7 +184,7 @@ container.
 
 | Width | What changes |
 |---|---|
-| 1024 px | Desktop shell with sidebar. Below it: drawer and bottom bar (use this one for the shell only) |
+| 1024 px | Full top bar. Below it: sections move into the menu sheet (use this one for the shell only) |
 | 768 px | Main content breakpoint: 4 columns become 2, page title 28 px, `lg` buttons become full-width pills |
 | 640 px | Stat and tile grids collapse to 1 column, table headers hide, action rows stack |
 | 480 px, 380 px | Fine tuning on narrow phones |
@@ -316,30 +315,34 @@ token select.
 </section>
 ```
 
-Then add the route in `src/themes/place/App.jsx`, the view in `BaseAppView.jsx` and the item in `BaseAppSidebar.jsx`. Give
+Then add the route in `src/themes/place/App.jsx`, the view in `BaseAppView.jsx`, and a link in `BaseAppTopNav.jsx`
+(a section, or the product menu) or in the hub row (`HUB_LINKS` in `BaseAppView.jsx`). Give
 the page a stylesheet `styles/<page>.css` with `pl-<page>-*` classes, and import it in `src/themes/place/index.js`
 before `based.css`.
 
 ### Navigation
 
-- **Sidebar item:** 40 px high, padding 0 10 px, 10 px radius, 18 px icon. Active: `--accent-soft` with `--accent`.
-  Hover: `--surface-2` with `--text`.
+The shell is `src/themes/place/components/BaseAppTopNav.jsx`, styled in `components.css` (`.pl-topnav-*`).
+
+- **Sections** (`NAV_SECTIONS`): Dashboard (`/`), Stocks (`/stocks`), Profile (`/profile`), Rewards (`/hub`). A
+  section link is a 36 px pill, 14 px, 500, `--text-2`; active `--accent-soft` with `--accent`; hover `--surface-2`.
+  Pages without a section of their own light up the one they belong to (`sectionOf` in `BaseAppView.jsx`): the
+  launch token page and the launch form belong to Dashboard, every hub page and Launch NFT to Rewards.
+- **Product menu:** the chevron next to the logo opens the other pages (My rewards, Staking, Create vault / campaign,
+  Launch NFT, My campaigns, Projects, Wallet, Swap, Docs; Skill with agents on; Admin for Place admins).
+- **Search:** a 40 px pill, focused with `/` from anywhere. An address opens that token, any other text opens the
+  Dashboard filtered by it (`/?q=`).
+- **Right side:** Launch NFT (secondary pill with a sparkle, desktop only; in the product menu on mobile), Launch token
+  (primary pill; an icon only on mobile), Agent Zone and the wallet toggle (agents only),
+  the theme switcher (desktop), and the address pill (Base chain dot, short address, network name on desktop), which
+  opens the wallet menu (Wallet, Account, Logout), or Connect wallet. Everything is a 36 px pill.
+- **Rewards hub row** (`.pl-hub-tabs`, a `.seg.soft` of links): All rewards, My rewards, Create, My campaigns, Projects,
+  on top of every hub page. Staking is a type tab of All rewards; a staking vault page lights up All rewards.
 - **Agent features** (Agent Zone, agent wallet, agent Settings, Skill) sit behind one flag, `FEATURES.agents` in
   `src/config/features.js`, and ship in the next upgrade. While it is off: `/agents`, `/settings` and `/skill`
-  redirect home, the nav and header leave them out, and Wallet, Swap and Account show the main wallet only (no
-  Main / Agent toggle).
-- **Sidebar groups:** Navigation (Explore, My rewards, Create, My campaigns, Staking, Projects, Wallet, Swap), Launchpad (Launchpad,
-  Launch token, Creator console), Tools (Skill, agents only), Resources. Admin sits above the wallet pill for Place admins only.
-- **Bottom bar:** Explore, Launch, Create, Rewards, More. Other pages (My campaigns, Staking, Projects, Launch token, Creator console,
-  Wallet, Swap, Docs; Skill and Agent Zone with agents on) live in the More sheet, and on those pages More counts as the current tab. Classes: `.base-app-bottom-nav`, `.bnav-track`, `.bnav-item`.
-  - **Dark:** full-width dark bar with `--text-3` icons, `--accent` when active, and a raised 52 px circle in
-    the centre (Create).
-  - **Based:** a floating bar of white glass, 12 px from the screen edges, with a blur and `--r-xl` corners. All icons
-    and labels are `--accent`. A glass marker (`.bnav-glider`, `--r-lg`) slides to the current tab, whose label goes
-    from 500 to 600. Create is a regular tab here.
-- **Header:** logo and menu button on the left on mobile; on the right Agent Zone and the wallet toggle (agents
-  only), the theme switcher (desktop), and the address pill (Base chain dot, short address, network name on desktop;
-  opens Wallet) or the Connect button. Everything is a pill: 36 px on desktop, 32 px on mobile.
+  redirect home, the nav leaves them out, and Wallet, Swap and Account show the main wallet only (no Main / Agent
+  toggle).
+- Old links `/launch` and `/launch/profile/*` redirect to `/` and `/profile/*`.
 
 ### Campaign card
 
@@ -390,27 +393,103 @@ the same components and tokens as the hub; only these pieces are its own:
   change, price and liquidity, lifetime and 24 h volume, pair and age. Values are USD when the pair has a USD price.
 - **Category tabs** (`.pl-launch-tabs`): All / Crypto / Stocks as 20 px text tabs; sorting is a `.seg.soft`.
 - **Tiny prices** keep their leading zeros counted: `$0.0₅3667` (`smallNumber` in `src/launch/format.js`).
-- **Launch form**: sections are cards (`.pl-launch-section`), options are switch rows (`.pl-launch-option`).
-  Economics: four template buttons (`.pl-launch-templates`, a radio group: No economics, Deflation, Community,
-  Balanced; 2 columns at 640 px), then nested 5 % sliders ("Give back to the token", and indented under it with a
-  left rule "Of that, burn", `.pl-launch-percent.nested`), a stacked bar (`EconomicsBar` in `parts.jsx`,
-  `.pl-launch-econ-bar`: burn green, community fund accent, X amber, the creator `--text-3`) and one plain sentence
-  of money (`.pl-launch-flow`: "From every $100 of volume: $0.30 to Place, …"). The preview card sits on the right and becomes a block under the form below 1180 px.
-- **Token page**: header with logo, badges and link pills; 5 tiles; candlestick chart (SVG, `--green`/`--red`
-  candles, `--border` grid, accent dashed last price); trades and holders tables; the swap card (Buy fills green,
-  Sell red) on the right, under the chart below 1100 px.
-- **Token page economics**: the same bar, the fund balance, next burn and default campaign dates; a Burns card
-  with rows that link to each transaction; holder rewards split into Official and From the community.
-- **Creator console**: per 0.2.0 token a card (`VaultPanel.jsx`) with three blocks (`.pl-launch-fee-grid.three`):
-  your fees, burn (Run process()), community fund (Use the fund opens `.pl-launch-fund-form`: holder campaign or
-  staking program, reward token, amount, the vault's quote and minOut). Raising shares uses sliders that cannot go
-  below the current values. 0.1.0 tokens keep the older two-block card.
-- **Staking** (`/staking`, `StakingPage.jsx`) and **Projects** (`/projects`, `ProjectsPage.jsx`) are hub pages built
-  from the same pieces (`.pl-staking-*`, `.pl-projects-*` in `launch.css`): program cards in `.pl-place-grid`
-  that open a detail block (tiles, stake form, position with claim and withdraw); a project list of rows that
-  reflows to two columns on phones.
-- **Creator console**: a side menu (`.pl-launch-console-nav`, a pill row below 1100 px) with Launches, Fees and
-  Profile settings. Saving the profile signs a message (no transaction).
+- **Launch form** (`LaunchForm.jsx`, `EconomyFields.jsx`): three numbered steps (`.pl-launch-step`, a 30 px
+  accent-soft number and a 22 px title): 01 Basics, 02 Economy, 03 Launch options. Options are cards with the switch
+  on the left (`.pl-launch-option`). Economy: Standard or Economy cards; for Economy, buy and sell tax sliders (1–5%
+  with a number box, `.pl-econ-range`, `.pl-econ-num`), then Tax allocation: a ring (`.pl-econ-ring`, 18 px arcs,
+  the total and Reset in the middle) beside five bucket sliders whose track is hatched where other buckets hold the
+  share, a "Fully allocated" badge, two cards splitting the buy and the sell tax in % of the trade, and the reward
+  rules (minimum holding, minimum daily volume, reward token). Bucket colours (`--c-*` on `.pl-econ` and the
+  preview): creator `--accent`, holders `--green`, traders `--amber`, burn `--red`, community pool a mix of accent
+  and green. On the right: a Live preview card (logo, name, TOKEN/PAIR, New, start price, launch cap, the allocation
+  bar, badges) and a summary card with the launch button; both move under the form below 1180 px.
+- **Token page** (`LaunchTokenPage.jsx`): header with logo, badges (an Economy token adds "Tax 3% / 5%") and link
+  pills; a facts strip (`.pl-launch-facts`: Creator, Created, Lifetime volume, and for 0.3.0 Creator revenue and
+  Protocol revenue; two columns on phones); 4 tiles (Market cap, Liquidity, Volume 24h, Holders); candlestick chart
+  (SVG, `--green`/`--red` candles, `--border` grid, accent dashed last price); then one card of tabs, a `.seg.soft`
+  in `.pl-launch-tabs-scroll` (scrolls sideways on phones and keeps the open tab in view; the tab is in `?tab=`):
+  Transactions · Holders · Economy · Updates · Burn · Rewards (0.3.0 only) · Staking / Campaigns · Disclosures. The
+  swap card (Buy fills green, Sell red) and About are on the right, under the chart below 1100 px.
+- **Token page tabs** (`TokenEconomy.jsx`, `TokenRewards.jsx`; body `.pl-launch-tab-body`, tiles
+  `.pl-launch-tab-tiles` 4/2 columns): **Economy** — tiles for the buy and sell tax (fee for Standard and 0.2.0),
+  Place's 30% and the 70% left, the ring of the launch form (`AllocationRing` from `EconomyFields.jsx`, without
+  Reset) beside a share table (`.pl-launch-share-grid`: Share, Of the tax, Buy, Sell, all in % of a trade; Place with
+  a `--text-3` dot, a Total row on `--surface-2`), the reward rules and, for 0.3.0, what each bucket collected since
+  launch. 0.2.0 shows the same ring and table (creator, burn, community fund) plus the fund facts; 0.1.0 keeps its
+  buyback list. **Burn** — Ready to burn, At the burn address, Burned with the button, the Burn tokens button (any
+  wallet; Connect wallet without one) and rows linking to each burn; 0.2.0 shows its daily buyback burns.
+  **Rewards** — one `.pl-launch-stream` card per holder / trader stream: a 36 px icon on a 14% tint (holders green,
+  traders amber), the rule, status, four tiles (shared, claimed, waiting, next day closes in), "You can claim" with
+  Claim (`.pl-launch-your-reward`) and the last days (`.pl-launch-days-grid`, table status as a badge, the IPFS table
+  link); Claim all when more than one stream is due. **Staking / Campaigns** — Official (economy streams, community
+  pool streams, the creator's campaigns and staking) and From the community, as `.pl-launch-hub-row` rows (a stream
+  opens its page in the hub), then Create vault / campaign and Open in Rewards hub (`/hub?token=`).
+  **Updates** — the creator's on-chain announcements; links only when http(s) or IPFS. **Disclosures** — a 2/1 column
+  grid of cards (`.pl-launch-disclosures`, accent icon): locked liquidity, no reserved supply, anti-snipe, fee split,
+  where the fee applies, burn, what can change and, with rewards, how the daily tables are made.
+- **Bucket colours** outside the form: wrap in `.pl-econ-palette`. `AllocationBar` (`parts.jsx`) draws the shares as
+  one bar with a legend (profile fee cards).
+- **Profile** (`/profile/:section`, `CreatorConsole.jsx`): Rewards (default), Launches, Fees, Profile settings.
+  **Rewards** (`ProfileRewards.jsx`): Claim all in the head (one claimMany per rewards contract), "Ready to claim"
+  tiles per reward token, then rows (`.pl-launch-reward-row`: token logo and stream, amounts right-aligned in mono,
+  Claim); phones put the amounts on their own line. **Fees**: 0.3.0 tokens get `VaultPanelV3.jsx` — the allocation
+  bar and three blocks: Creator revenue (Claim), Community Pool (Create campaign opens `.pl-launch-fund-form`: holder
+  rewards, trader rewards or staking, amount, reward token, start, minimum, days, slippage, the quote and the ready
+  transaction from `launch/fund-quote`), Automatic campaign (date; Start it now when due). 0.2.0 tokens keep
+  `VaultPanel.jsx` (your fees, burn with Run process(), community fund, raising shares); 0.1.0 the two-block card.
+- **Rewards hub** (`/hub`, `HubPage.jsx`, shared pieces in `vaults.jsx`, styles in `styles/rewards.css` plus the
+  `.pl-vaults-*` / `.pl-vault-*` / `.pl-filter-*` classes of `launch.css`): every reward on Place in the vault look. The
+  head: the title with its description on one line, Launch NFT and Create vault / campaign (primary) on the right; four
+  stat boxes (`.pl-rewards-stats`, 4/2 columns: Live now, Paid out per day, Tokens, You can claim with a link to
+  Profile); type tabs (`.pl-rewards-types`, a `.seg.soft` in `.pl-launch-tabs-scroll`: All · Staking · Holders · Traders ·
+  NFT holders, the number of live ones in a mono pill; `?type=`); a toolbar of filter pills (Reward currency, Token /
+  Staking token / Collection, Phase, Source: Token economy · Creators and pools · Community · Tokens from other
+  launchpads, Sort: Recommended, Most per day, Biggest pool, Highest APR, Newest, Ending soon) plus a Mine toggle, a
+  search (ID, token or address) and a Cards / Table switch (remembered per browser); `?token=` starts filtered by a token.
+  Cards (4/3/2/1 columns): target and reward logos overlapped, "Stake / Hold / Trade X · Earn Y" ("Hold X NFT" for
+  collections), the ID with copy, status and an arrow, then a 2×2 grid of 11 px caps labels and 16 px mono values
+  (staking: Live APR, TVL, Epochs, Early withdrawal; streams: Per day or Last day, Pool or Funded so far, Epochs N / M
+  or N with "Every day, no end", Condition in 13 px; snapshot campaigns: Pool, Claimed, Snapshot, Claim until), then
+  tags: the source (Token economy, Community Pool, Creator in accent; Community neutral), Launched on Place or Place
+  collection, Snapshot, Not supported (amber), You can claim / You stake (green), You funded. The table
+  (`.pl-rewards-row`, 7 columns, scrolls sideways inside its card) shows the same with the source under the name. A
+  staking card opens `/staking?program=` (the vault page: stake form, position, claim, withdraw; `/staking` alone opens
+  the Staking tab), a snapshot card its campaign page, a stream `/hub?stream=`.
+- **Stream page** (`HubStreamDetail.jsx`): back link "All rewards", the vault head (40 px logos, 28 px title, ID, status,
+  source and Place badges), an amber alert when Place does not build tables for the stream, 4 tiles (Per day, Pool,
+  Shared so far, Next day closes in or Starts in; 15 px values on phones), the rule with "You can claim" and Claim beside
+  a facts card (token, days in UTC, funded by, reward, contract), "Keep it running" (Close the day when a finished day
+  is not closed; Return to funder 30 days after the last day) and the days table (`.pl-rewards-days-grid`: day, shared,
+  wallets, table status with the IPFS link).
+- **Create vault / campaign** (`/create`, `HubCreatePage.jsx`, logic in `src/launch/hubCreate.js`): the launch-form layout
+  (numbered steps, a sticky summary on the right, under the form below 1180 px). 01 What to reward: four type cards in
+  a 2×2 grid (`.pl-rewards-kinds`, accent icons, one column below 480 px): Staking vault, Holder rewards, Trader rewards,
+  NFT holder rewards. 02 Token / Collection: the address, then a block (`.pl-rewards-asset`) with the name, Token / NFT
+  collection and Launched on Place / Place collection badges, and a My wallet / Community Pool switch
+  (`.pl-rewards-funding`; the pool only for the token's creator, never for NFT rewards). 03 Reward and schedule: reward
+  token, pool amount (from the pool: the amount in its pair asset, and a slippage), days or epochs and epoch length,
+  start day (00:00 UTC), the condition (minimum balance, minimum daily volume in the pair asset, minimum NFTs) or early
+  withdrawal for staking. The summary: per day, Place fee, You pay, Runs and the button; an info alert on how it pays
+  out; for NFT rewards an amber alert linking to Launch NFT. `?type=` and `?token=` fill the form; a created stream or
+  vault opens right away.
+- **Launch NFT** (`/launch/nft`, `LaunchNftPage.jsx`): the same layout with 01 Collection, 02 Mint, 03 Your token and
+  royalties (part of every mint buys back and burns your token); the summary card with Launch collection, an info
+  alert that Place collections can get holder rewards, and Your collections (each with Reward holders). After the
+  launch: Reward its holders (primary), Open collection, Transaction.
+- **Projects** (`/projects`, `ProjectsPage.jsx`, `.pl-projects-*`): a list of rows that reflows to two columns on phones.
+- **Stocks** (`/stocks`, `StocksPage.jsx`, `.pl-stocks-*`): every Coinbase tokenized stock on Base, from
+  `GET launch/stocks`. A hero card (`--r-xl`): 56 px title, one sentence, a stat block (Paired tokens and Onchain
+  liquidity large; Listed stocks, Launch ready, Liquidity ≥ $10K small) and a cloud of stock logos on the right
+  (hidden below 1024 px). Then Categories (7/5/3/2 columns, three overlapped logos, name, count; a click filters the
+  list) and All stocks: filter pills with counts, sort (Liquidity, Price, A–Z), search, cards or a list. A stock card:
+  logo, ticker and company, rank by liquidity, price (24 px mono) and shares, liquidity, a 4 px accent bar on a log
+  scale, the number of Place tokens paired with it and "Launch with TICKER" (primary when the stock is a launch pair
+  on this network, otherwise disabled). Categories are set by ticker in `src/launch/stockCategories.js`.
+- Don't use `<section>` inside a page: an old global rule gives it 100 px padding. Use a `div`.
+- **Profile menu**: a side menu (`.pl-launch-console-nav`, a pill row below 1100 px) with Rewards, Launches, Fees
+  and Profile settings. Saving the profile signs a message (no transaction).
+- **Projects** rows show "Tax X% / Y%", Rewards, Burn and Community pool (fund for 0.2.0) badges, and the release for
+  tokens older than 0.3.0 (by `generation`).
 
 ### Modals
 
@@ -442,7 +521,7 @@ place of personal data, and keep the public numbers visible.
 |---|---|---|
 | Hover and colour changes | 0.15 s | `ease` |
 | Button press | 0.05 s | `ease` |
-| Sidebar width | 0.2–0.25 s | `ease` / `cubic-bezier(0.16, 1, 0.3, 1)` |
+| Menu sheet entrance | 0.18 s | `cubic-bezier(0.16, 1, 0.3, 1)` |
 | Progress fill | 0.3 s | `ease` |
 | Modal entrance | 0.18–0.32 s | `cubic-bezier(0.16, 1, 0.3, 1)` |
 
@@ -455,7 +534,6 @@ and Based turns its own animations off.
 **Based only**, all using `--ease` (`cubic-bezier(0.4, 0, 0.2, 1)`):
 - Pages slide up 10 px in 240 ms (`based-slide-in`).
 - Page titles reveal with a Base Blue square wipe in 560 ms (`based-reveal`, `based-wipe`).
-- The bottom bar marker slides between tabs in 240 ms.
 - The background texture drifts slowly over 48 s (`based-drift`).
 
 ---
@@ -468,8 +546,8 @@ and Based turns its own animations off.
 |---|---|
 | Inline in a tile, badge or small button | 12–14 px |
 | Buttons and rows | 15–16 px |
-| Sidebar | 18 px |
-| Mobile menu button, bottom bar | 20–22 px |
+| Top bar sections, menus | 16 px; 18 px in the menu sheet |
+| Mobile menu button | 20 px |
 
 Icons take a colour from their text or a token.
 
@@ -506,8 +584,8 @@ viewport, on `.base-app-shell`. It is weaker on mobile. The docs go without it, 
 - **Page descriptions:** one factual sentence with no full stop: "Personal reward allocations, active claims, and
   distribution history".
 - **Buttons:** verb first: "Go to Claim Portal", "View rules", "Connect wallet".
-- **Names to keep:** Place, Explore, My rewards, My campaigns, Create, Claim all, Agent Zone, Launchpad, Launch token,
-  Creator console, Launched on Place.
+- **Names to keep:** Place, Dashboard, Stocks, Profile, Rewards, Campaigns, My rewards, My campaigns, Create, Claim all,
+  Agent Zone, Launchpad, Launch token, Launched on Place.
 
 ---
 
@@ -521,12 +599,13 @@ viewport, on `.base-app-shell`. It is weaker on mobile. The docs go without it, 
 | `src/themes/place/styles/components.css` | Buttons, cards, tiles, badges, segmented control, header, alerts, empty state |
 | `src/themes/place/components/ui/index.jsx` | The React components for the above |
 | `src/themes/place/styles/place.css` | Place pages and shell pieces (`pl-place-*`) |
-| `src/themes/place/styles/launch.css` | Place Launch pages (`pl-launch-*`) |
-| `src/launch/ui/` | The Place Launch pages: dashboard, launch form, token page, creator console |
+| `src/themes/place/styles/launch.css` | Place Launch pages (`pl-launch-*`), vault cards and filter pills (`pl-vault-*`, `pl-filter-*`) |
+| `src/themes/place/styles/rewards.css` | Rewards hub, Create vault / campaign, Launch NFT (`pl-rewards-*`) |
+| `src/launch/ui/` | The Place Launch pages: dashboard, launch form, token page, creator console, the Rewards hub (`HubPage`, `HubStreamDetail`, `HubCreatePage`, `vaults.jsx`) and Launch NFT |
 | `src/themes/place/styles/{hub,claim,swap,docs}.css` | Shared card and table patterns, Swap, Docs |
 | `src/themes/place/pages/place/` | The Place pages |
 | `src/themes/place/pages/docs/` | Docs at `/docs`: shell (`DocsPage.jsx`), blocks (`kit.jsx`), content by menu group (`pages/`, a coming-soon page for now) |
-| `src/themes/place/components/BaseApp{View,Sidebar,Header,BottomNav}.jsx` | App shell |
+| `src/themes/place/components/BaseApp{View,TopNav}.jsx` | App shell: pages, top bar, hub row |
 | `src/components/wallet/WalletPages.css` | Wallet, Account, Settings, forms, modals (`pw-*`) |
 | `src/components/agent/AgentsPage.css`, `SkillPage.css` | Agent Zone and Skill (`agp-*`, `skp-*`) |
 
@@ -541,7 +620,7 @@ Before shipping a UI change, check that:
 
 - [ ] It looks right in both themes: `?theme=dark` and `?theme=based`.
 - [ ] It works at desktop width and at 375 px, with no sideways scrolling.
-- [ ] Nothing is hidden behind the bottom bar or the sidebar.
+- [ ] Nothing is hidden behind the top bar or the menu sheet.
 - [ ] There are no hard-coded colours, and only tokens from this file.
 - [ ] It reuses existing components.
 - [ ] Hover, focus, disabled, loading, empty and error states exist.

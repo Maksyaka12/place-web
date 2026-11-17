@@ -1,36 +1,37 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { BaseAppHeader } from './BaseAppHeader';
-import { BaseAppSidebar } from './BaseAppSidebar';
-import { BaseAppBottomNav } from './BaseAppBottomNav';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { BaseAppTopNav } from './BaseAppTopNav';
 import WalletToggle from '../../../components/wallet/WalletToggle';
 import { FEATURES } from '../../../config/features';
 import { PageHeader } from './ui';
-import ExplorePage from '../pages/place/ExplorePage';
+import LaunchDashboard from '../../../launch/ui/LaunchDashboard';
+import { LiveTicker } from '../../../launch/ui/LiveTicker.jsx';
 // The page stylesheets stay in the first bundle, in the order they always had, so lazy pages look exactly the same.
 import '../../../components/wallet/WalletPages.css';
 import '../../../components/agent/AgentsPage.css';
 import '../../../components/agent/SkillPage.css';
 import './BaseAppTheme.css';
 
-// Pages other than Explore load on demand, so the first visit downloads less. Once the app has shown,
+// Pages other than the dashboard load on demand, so the first visit downloads less. Once the app has shown,
 // they are fetched in the background, so moving between pages stays instant.
 const PAGES = {
+  HubPage: () => import('../../../launch/ui/HubPage'),
+  HubCreatePage: () => import('../../../launch/ui/HubCreatePage'),
+  LaunchNftPage: () => import('../../../launch/ui/LaunchNftPage'),
   CampaignPage: () => import('../pages/place/CampaignPage'),
   TokenPage: () => import('../pages/place/TokenPage'),
   RewardsPage: () => import('../pages/place/RewardsPage'),
-  CreatePage: () => import('../pages/place/CreatePage'),
   MyCampaignsPage: () => import('../pages/place/MyCampaignsPage'),
   AdminPage: () => import('../pages/place/AdminPage'),
   SwapPanel: () => import('./SwapPanel'),
   WalletPage: () => import('../../../components/wallet/WalletPage'),
   AccountPage: () => import('../../../components/wallet/AccountPage'),
-  LaunchDashboard: () => import('../../../launch/ui/LaunchDashboard'),
   LaunchForm: () => import('../../../launch/ui/LaunchForm'),
   LaunchTokenPage: () => import('../../../launch/ui/LaunchTokenPage'),
   CreatorConsole: () => import('../../../launch/ui/CreatorConsole'),
   StakingPage: () => import('../../../launch/ui/StakingPage'),
   ProjectsPage: () => import('../../../launch/ui/ProjectsPage'),
+  StocksPage: () => import('../../../launch/ui/StocksPage'),
   ...(FEATURES.agents
     ? {
         AgentsPage: () => import('../../../components/agent/AgentsPage'),
@@ -39,10 +40,12 @@ const PAGES = {
       }
     : {}),
 };
+const RewardsHub = lazy(PAGES.HubPage);
+const HubCreatePage = lazy(PAGES.HubCreatePage);
+const LaunchNftPage = lazy(PAGES.LaunchNftPage);
 const CampaignPage = lazy(PAGES.CampaignPage);
 const TokenPage = lazy(PAGES.TokenPage);
 const RewardsPage = lazy(PAGES.RewardsPage);
-const CreatePage = lazy(PAGES.CreatePage);
 const MyCampaignsPage = lazy(PAGES.MyCampaignsPage);
 const AdminPage = lazy(PAGES.AdminPage);
 const SwapPanel = lazy(PAGES.SwapPanel);
@@ -51,12 +54,12 @@ const AccountPage = lazy(PAGES.AccountPage);
 const AgentsPage = lazy(() => import('../../../components/agent/AgentsPage'));
 const SettingsPage = lazy(() => import('../../../components/wallet/SettingsPage'));
 const SkillPage = lazy(() => import('../../../components/agent/SkillPage'));
-const LaunchDashboard = lazy(PAGES.LaunchDashboard);
 const LaunchForm = lazy(PAGES.LaunchForm);
 const LaunchTokenPage = lazy(PAGES.LaunchTokenPage);
 const CreatorConsole = lazy(PAGES.CreatorConsole);
 const StakingPage = lazy(PAGES.StakingPage);
 const ProjectsPage = lazy(PAGES.ProjectsPage);
+const StocksPage = lazy(PAGES.StocksPage);
 
 let pagesWarm = false;
 function warmPages() {
@@ -95,13 +98,16 @@ class BaseAppErrorBoundary extends React.Component {
 // Agent pages (Agent Zone, agent settings, skill) exist only while FEATURES.agents is on.
 const AGENT_TABS = ['agents', 'settings', 'skill'];
 
-/** Which page a path opens. Pages without a nav item highlight the section they belong to (`nav`). */
+/** Which page a path opens. */
 export function tabFromPath(pathname) {
   const p = pathname.toLowerCase();
+  if (p === '/' || p === '') return 'dashboard';
+  if (p.startsWith('/stocks')) return 'stocks';
   if (p.startsWith('/launch/new')) return 'launch-new';
+  if (p.startsWith('/launch/nft')) return 'launch-nft';
   if (p.startsWith('/launch/token/')) return 'launch-token';
-  if (p.startsWith('/launch/profile')) return 'launch-profile';
-  if (p.startsWith('/launch')) return 'launch';
+  if (p.startsWith('/profile')) return 'profile';
+  if (p.startsWith('/hub')) return 'hub';
   if (p.startsWith('/campaign/')) return 'campaign';
   if (p.startsWith('/token/')) return 'token';
   if (p.startsWith('/rewards')) return 'rewards';
@@ -112,36 +118,58 @@ export function tabFromPath(pathname) {
   if (p.startsWith('/staking')) return 'staking';
   if (p.startsWith('/projects')) return 'projects';
   for (const t of ['wallet', 'account', ...(FEATURES.agents ? AGENT_TABS : [])]) if (p.startsWith(`/${t}`)) return t;
-  return 'explore';
+  return 'dashboard';
 }
 
-const NAV_OF = { campaign: 'explore', token: 'explore', 'launch-token': 'launch' };
+/** The top-bar section a page belongs to. The Rewards hub groups the campaign, staking and claim pages. */
+const HUB_TABS = ['hub', 'campaign', 'token', 'rewards', 'create', 'mine', 'staking', 'projects', 'launch-nft'];
+export function sectionOf(tab) {
+  if (tab === 'dashboard' || tab === 'launch-token' || tab === 'launch-new') return 'dashboard';
+  if (tab === 'stocks') return 'stocks';
+  if (tab === 'profile') return 'profile';
+  if (HUB_TABS.includes(tab)) return 'hub';
+  return null;
+}
 
-export const TAB_PATHS = {
-  explore: '/',
-  rewards: '/rewards',
-  create: '/create',
-  mine: '/my',
-  admin: '/admin',
-  buy: '/swap',
-  wallet: '/wallet',
-  account: '/account',
-  agents: '/agents',
-  settings: '/settings',
-  skill: '/skill',
-  docs: '/docs',
-  staking: '/staking',
-  projects: '/projects',
-  launch: '/launch',
-  'launch-new': '/launch/new',
-  'launch-profile': '/launch/profile',
-};
+const HUB_LINKS = [
+  { tab: 'hub', label: 'All rewards', to: '/hub' },
+  { tab: 'rewards', label: 'My rewards', to: '/rewards' },
+  { tab: 'create', label: 'Create', to: '/create' },
+  { tab: 'mine', label: 'My campaigns', to: '/my' },
+  { tab: 'projects', label: 'Projects', to: '/projects' },
+];
+
+/** The Rewards hub's own section row, above each hub page (the type tabs of All rewards hold Staking). */
+function HubTabs({ tab }) {
+  const active = tab === 'campaign' || tab === 'token' || tab === 'staking' ? 'hub' : tab;
+  return (
+    <nav className="seg soft pl-hub-tabs" aria-label="Rewards hub">
+      {HUB_LINKS.map((l) => (
+        <Link key={l.to} to={l.to} aria-current={active === l.tab ? 'page' : undefined} aria-selected={active === l.tab}>
+          {l.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** Width of the widest pages: dashboards, the token page, the launch form and the profile. */
+const WIDE = 1536;
 
 function Page({ width = 1040, children }) {
   return (
     <section style={{ padding: '24px 0 60px 0' }}>
-      <div style={{ maxWidth: `${width}px`, margin: '0 auto', padding: '0 14px' }}>{children}</div>
+      <div style={{ maxWidth: `${width}px`, margin: '0 auto', padding: '0 16px' }}>{children}</div>
     </section>
+  );
+}
+
+function HubPage({ tab, width = WIDE, children }) {
+  return (
+    <Page width={width}>
+      <HubTabs tab={tab} />
+      {children}
+    </Page>
   );
 }
 
@@ -150,65 +178,35 @@ export function BaseAppView() {
   const navigate = useNavigate();
   useEffect(() => { warmPages(); }, []);
 
-  // Mobile drawer state
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-
-  // Desktop viewport check (>= 1024px)
   const [isDesktop, setIsDesktop] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : false));
-
-  // Desktop sidebar collapsed state with localStorage persistence
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('place_sidebar_collapsed') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
-
   useEffect(() => {
-    const handleResize = () => {
-      const desktop = window.innerWidth >= 1024;
-      setIsDesktop(desktop);
-      if (desktop) setIsMobileSidebarOpen(false);
-    };
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const toggleSidebarCollapse = () => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('place_sidebar_collapsed', String(next));
-      } catch (e) {}
-      return next;
-    });
-  };
-
   const tab = tabFromPath(location.pathname);
-  const activeTab = NAV_OF[tab] || tab;
-
-  const handleSelectTab = (tabId) => {
-    navigate(TAB_PATHS[tabId] || '/');
+  const go = (path) => {
+    navigate(path);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Compute desktop margin-left based on sidebar state (248px expanded, 64px collapsed)
-  const desktopMarginLeft = isDesktop ? (isSidebarCollapsed ? '64px' : '248px') : '0px';
-
   let content;
-  if (tab === 'campaign') content = <Page><CampaignPage /></Page>;
-  else if (tab === 'token') content = <Page><TokenPage /></Page>;
-  else if (tab === 'rewards') content = <Page><RewardsPage /></Page>;
-  else if (tab === 'create') content = <Page width={760}><CreatePage /></Page>;
-  else if (tab === 'mine') content = <Page><MyCampaignsPage /></Page>;
+  if (tab === 'dashboard') content = <Page width={WIDE}><LaunchDashboard /></Page>;
+  else if (tab === 'stocks') content = <Page width={WIDE}><StocksPage /></Page>;
+  else if (tab === 'launch-new') content = <Page width={WIDE}><LaunchForm /></Page>;
+  else if (tab === 'launch-token') content = <Page width={WIDE}><LaunchTokenPage /></Page>;
+  else if (tab === 'profile') content = <Page width={WIDE}><CreatorConsole /></Page>;
+  else if (tab === 'hub') content = <HubPage tab={tab}><RewardsHub /></HubPage>;
+  else if (tab === 'campaign') content = <HubPage tab={tab}><CampaignPage /></HubPage>;
+  else if (tab === 'token') content = <HubPage tab={tab}><TokenPage /></HubPage>;
+  else if (tab === 'rewards') content = <HubPage tab={tab}><RewardsPage /></HubPage>;
+  else if (tab === 'create') content = <HubPage tab={tab}><HubCreatePage /></HubPage>;
+  else if (tab === 'launch-nft') content = <Page width={WIDE}><LaunchNftPage /></Page>;
+  else if (tab === 'mine') content = <HubPage tab={tab}><MyCampaignsPage /></HubPage>;
+  else if (tab === 'staking') content = <HubPage tab={tab}><StakingPage /></HubPage>;
+  else if (tab === 'projects') content = <HubPage tab={tab}><ProjectsPage /></HubPage>;
   else if (tab === 'admin') content = <Page><AdminPage /></Page>;
-  else if (tab === 'staking') content = <Page><StakingPage /></Page>;
-  else if (tab === 'projects') content = <Page width={1200}><ProjectsPage /></Page>;
-  else if (tab === 'launch') content = <Page width={1200}><LaunchDashboard /></Page>;
-  else if (tab === 'launch-new') content = <Page width={1120}><LaunchForm /></Page>;
-  else if (tab === 'launch-token') content = <Page width={1200}><LaunchTokenPage /></Page>;
-  else if (tab === 'launch-profile') content = <Page width={1120}><CreatorConsole /></Page>;
   else if (tab === 'buy') {
     content = (
       <Page width={480}>
@@ -221,55 +219,28 @@ export function BaseAppView() {
     content = (
       <Page width={560}>
         <PageHeader title="Wallet" description={FEATURES.agents ? 'Balances, deposits and transfers for your Place wallets' : 'Balances, deposits and transfers for your wallet'} />
-        <WalletPage theme="dark" onSwap={() => handleSelectTab('buy')} />
+        <WalletPage theme="dark" onSwap={() => go('/swap')} />
       </Page>
     );
   } else if (tab === 'agents') content = <Page><AgentsPage theme="dark" /></Page>;
-  else if (tab === 'skill') content = <Page><SkillPage theme="dark" onOpenAgents={() => handleSelectTab('agents')} /></Page>;
+  else if (tab === 'skill') content = <Page><SkillPage theme="dark" onOpenAgents={() => go('/agents')} /></Page>;
   else if (tab === 'settings') {
     content = (
       <Page width={640}>
         <PageHeader title="Settings" description="What your agent can do with the agent wallet and its daily limits" />
-        <SettingsPage theme="dark" onOpenAgents={() => handleSelectTab('agents')} />
+        <SettingsPage theme="dark" onOpenAgents={() => go('/agents')} />
       </Page>
     );
-  } else if (tab === 'account') content = <Page width={560}><AccountPage theme="dark" onOpenWallet={() => handleSelectTab('wallet')} /></Page>;
-  else content = <Page><ExplorePage /></Page>;
+  } else if (tab === 'account') content = <Page width={560}><AccountPage theme="dark" onOpenWallet={() => go('/wallet')} /></Page>;
 
   return (
     <BaseAppErrorBoundary>
-      <div className="base-app-shell" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '100vw', margin: 0, padding: 0 }}>
-        <BaseAppSidebar
-          isDesktop={isDesktop}
-          isCollapsed={isDesktop && isSidebarCollapsed}
-          onToggleCollapse={isDesktop ? toggleSidebarCollapse : undefined}
-          activeTab={activeTab}
-          onSelectTab={handleSelectTab}
-          isOpen={isDesktop || isMobileSidebarOpen}
-          onClose={() => setIsMobileSidebarOpen(false)}
-        />
-
-        <div
-          className="base-app-main-content-wrap"
-          style={{
-            marginLeft: desktopMarginLeft,
-            transition: 'margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            width: isDesktop ? `calc(100% - ${desktopMarginLeft})` : '100%',
-            maxWidth: '100%',
-            boxSizing: 'border-box'
-          }}
-        >
-          <BaseAppHeader isDesktop={isDesktop} onOpenSidebar={() => setIsMobileSidebarOpen(true)} onSelectTab={handleSelectTab} />
-
-          <main key={location.pathname} style={{ flex: 1, paddingBottom: isDesktop ? '40px' : '90px' }}>
-            <Suspense fallback={null}>{content}</Suspense>
-          </main>
-
-          {!isDesktop && <BaseAppBottomNav activeTab={activeTab} onSelectTab={handleSelectTab} />}
-        </div>
+      <div className="base-app-shell pl-shell">
+        <BaseAppTopNav activeSection={sectionOf(tab)} isDesktop={isDesktop} />
+        <LiveTicker />
+        <main key={location.pathname} className="pl-shell-main">
+          <Suspense fallback={null}>{content}</Suspense>
+        </main>
       </div>
     </BaseAppErrorBoundary>
   );

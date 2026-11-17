@@ -1,21 +1,25 @@
-// A launch token (/launch/token/:address): price and chart, buy and sell on its pool, trades, holders,
-// metadata and links, the token's economics and its holder rewards in the Place hub.
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Globe, ExternalLink, Send, Gift, Flame, Users, Rocket, ArrowUpRight, Coins, Clock } from 'lucide-react';
+// A launch token (/launch/token/:address), laid out like a trading terminal: the header with the token's facts
+// (creator, created, lifetime volume, creator and protocol revenue), the chart, then tabs: Transactions, Holders,
+// Economy, Updates, Burn, Rewards (0.3.0), Staking / Campaigns and Disclosures; the swap card on the right.
+// Each release shows its own economics (`generation`: 1 = 0.1.0, 2 = 0.2.0, 3 = 0.3.0).
+import { useEffect, useRef, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Globe, ExternalLink, Send, Users, Rocket } from 'lucide-react';
 import { Card, Tile, Badge, EmptyState, Button } from '../../themes/place/components/ui';
-import { CopyAddress, AddressLink, QueryError, Skeleton, StatusBadge, campaignPath } from '../../themes/place/pages/place/parts';
+import { CopyAddress, AddressLink, QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useNow } from '../../place/hooks';
 import { explorerTx } from '../../place/chain';
 import { formatAmount, formatUtc, shortAddress } from '../../place/format';
 import { useLaunchToken, useCandles, useLaunchHolders, useProfile } from '../hooks.js';
 import { CandleChart } from './CandleChart.jsx';
 import { SwapPanel } from './SwapPanel.jsx';
-import { TokenLogo, KindBadge, NewBadge, Change, EconomicsBar, launchPath, consolePath } from './parts.jsx';
-import { tokenShares, feeFlow, flowSentence } from '../economy.js';
+import { TokenLogo, KindBadge, NewBadge, Change, launchPath, consolePath } from './parts.jsx';
+import { tokenEconomy } from '../economy.js';
 import { money } from './TokenCard.jsx';
+import { EconomyTab, BurnTab, DisclosuresTab, units } from './TokenEconomy.jsx';
+import { RewardsTab, CampaignsTab, UpdatesTab } from './TokenRewards.jsx';
 import { useLaunchLive, useLiveToken, useLiveTrades, useLiveCandles, freshTrades, liveTradesOf } from '../live.js';
-import { usd, price as priceText, compact, age, bpsText, amount } from '../format.js';
+import { usd, price as priceText, compact, age } from '../format.js';
 
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
@@ -119,7 +123,6 @@ function Trades({ token, trades, now }) {
 }
 
 const TAG_LABEL = { pool: 'Pool', hook: 'Hook', burned: 'Burned', vault: 'Creator vault', creator: 'Creator', staking: 'Staking' };
-const num = (raw, decimals, maxDecimals = 8) => Number(formatAmount(raw ?? 0, decimals, { maxDecimals }).replace(/,/g, ''));
 
 function Holders({ token }) {
   const { data, isLoading } = useLaunchHolders(token.address);
@@ -149,282 +152,127 @@ function Holders({ token }) {
   );
 }
 
-function Activity({ data, token, now }) {
-  const [tab, setTab] = useState('trades');
+/** The tabs under the chart. The open tab lives in ?tab= so it survives a reload and can be linked. */
+function TokenTabs({ data, token, econ, now }) {
+  const [params, setParams] = useSearchParams();
   const trades = useLiveTrades(data.trades, data.indexedBlock, token.poolId, 50);
   const fresh = freshTrades(liveTradesOf(token.poolId), data.indexedBlock);
   const buys = data.activity24h.buys + fresh.filter((t) => t.side === 'buy').length;
   const sells = data.activity24h.sells + fresh.filter((t) => t.side === 'sell').length;
+  const v3 = token.generation >= 3;
+  const tabs = [
+    { id: 'transactions', label: 'Transactions' },
+    { id: 'holders', label: 'Holders', count: token.holders },
+    { id: 'economy', label: 'Economy' },
+    { id: 'updates', label: 'Updates', count: data.announcements?.length || null },
+    { id: 'burn', label: 'Burn' },
+    v3 && { id: 'rewards', label: 'Rewards' },
+    { id: 'campaigns', label: 'Staking / Campaigns' },
+    { id: 'disclosures', label: 'Disclosures' },
+  ].filter(Boolean);
+  const active = tabs.some((x) => x.id === params.get('tab')) ? params.get('tab') : 'transactions';
+  const strip = useRef(null);
+  // On a phone the tab row scrolls sideways: keep the open tab in view (only the strip moves, not the page).
+  useEffect(() => {
+    const el = strip.current;
+    const btn = el?.querySelector('[aria-selected="true"]');
+    if (!el || !btn) return;
+    const box = el.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    el.scrollLeft = Math.max(0, el.scrollLeft + b.left - box.left - (box.width - b.width) / 2);
+  }, [active]);
+  const open = (id) => {
+    const next = new URLSearchParams(params);
+    if (id === 'transactions') next.delete('tab');
+    else next.set('tab', id);
+    setParams(next, { replace: true });
+  };
   return (
     <Card className="pl-launch-activity">
       <div className="pl-launch-activity-head">
-        <div className="seg soft" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'trades'} onClick={() => setTab('trades')}>
-            Trades
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'holders'} onClick={() => setTab('holders')}>
-            Holders <span className="mono">{token.holders}</span>
-          </button>
-        </div>
-        <span className="pl-launch-muted pl-launch-activity-sub">
-          24h: <span className="pl-launch-buy mono">{buys} buys</span> · <span className="pl-launch-sell mono">{sells} sells</span> ·{' '}
-          <span className="mono">{data.activity24h.traders}</span> traders
-        </span>
-      </div>
-      {tab === 'trades' ? <Trades token={token} trades={trades} now={now} /> : <Holders token={token} />}
-    </Card>
-  );
-}
-
-/** 0.2.0: the three baskets, the community fund and the daily burn. */
-function Economics({ data, now }) {
-  const t = data.token;
-  const shares = tokenShares(t.economics);
-  if (!shares) return <LegacyEconomics data={data} />;
-  const totals = data.vault?.totals;
-  const fund = data.fund;
-  const q = t.quote;
-  const xPct = (t.economics.xShares || []).reduce((s, x) => s + Number(x.bps), 0) / 100;
-  const flow = feeFlow({ burn: shares.burn, fund: shares.fund, xPct });
-  const nextProcess = fund?.process?.nextAt ? new Date(fund.process.nextAt).getTime() : null; // ms, like useNow
-  return (
-    <Card className="pl-launch-econ-card">
-      <span className="pl-launch-section-title">Economics</span>
-      <p className="pl-launch-section-desc">Each trade pays 1%: 0.7% to the token&apos;s vault, 0.3% to Place. The vault splits its part like this, and the burn and fund shares can only go up.</p>
-      <EconomicsBar burn={shares.burn} fund={shares.fund} x={(shares.creator * xPct) / 100} you={(shares.creator * (100 - xPct)) / 100} youLabel="Creator" />
-      <p className="pl-launch-small pl-launch-muted">{flowSentence(flow, { you: 'the creator' })}.</p>
-      <dl className="pl-place-kv">
-        {fund && (
-          <div>
-            <dt>
-              <Users size={13} /> Community fund
-            </dt>
-            <dd className="mono">
-              {amount(num(fund.balance, q.decimals), q.symbol)}
-              {fund.pending !== '0' && <span className="pl-launch-muted"> +{amount(num(fund.pending, q.decimals), q.symbol)} pending</span>}
-            </dd>
-          </div>
-        )}
-        {totals && (
-          <>
-            <div>
-              <dt>
-                <Flame size={13} /> Burned so far
-              </dt>
-              <dd className="mono">{amount(num(data.burns?.totalTokens, 18, 2), t.symbol)}</dd>
-            </div>
-            <div>
-              <dt>Fees collected</dt>
-              <dd className="mono">{amount(num(totals.collected, q.decimals), q.symbol)}</dd>
-            </div>
-            <div>
-              <dt>Sent to the fund</dt>
-              <dd className="mono">{amount(num(totals.toFund, q.decimals), q.symbol)}</dd>
-            </div>
-          </>
-        )}
-        {fund && shares.burn > 0 && (
-          <div>
-            <dt>
-              <Clock size={13} /> Next burn
-            </dt>
-            <dd>{nextProcess && nextProcess > now ? formatUtc(fund.process.nextAt) : 'Due now, Place runs it daily'}</dd>
-          </div>
-        )}
-        {fund && shares.fund > 0 && (
-          <div>
-            <dt>Default campaign</dt>
-            <dd>{new Date(fund.defaultCampaign.nextAt).getTime() > now ? `If unused until ${formatUtc(fund.defaultCampaign.nextAt)}` : 'Anyone can start it now'}</dd>
-          </div>
-        )}
-      </dl>
-    </Card>
-  );
-}
-
-/** Burns with links to their transactions. */
-function Burns({ data, now }) {
-  const t = data.token;
-  const burns = data.burns;
-  if (!burns || (!burns.count && !tokenShares(t.economics)?.burn)) return null;
-  return (
-    <Card className="pl-launch-burns">
-      <div className="pl-launch-section-head">
-        <span className="pl-launch-section-title">Burns</span>
-        <span className="pl-launch-muted mono pl-launch-small">{burns.count} total</span>
-      </div>
-      {burns.list.length ? (
-        <div className="pl-launch-hub-list">
-          {burns.list.slice(0, 8).map((b) => (
-            <a key={b.tx} className="pl-launch-hub-row" href={explorerTx(b.tx)} target="_blank" rel="noopener noreferrer">
-              <span className="pl-launch-inline">
-                <Flame size={13} className="pl-launch-buy" />
-                <span className="mono">{compact(num(b.tokens, 18, 2))} {t.symbol}</span>
-              </span>
-              <span className="pl-launch-hub-row-right">
-                <span className="mono pl-launch-muted">{compact(num(b.quoteIn, t.quote.decimals), { decimals: 6 })} {t.quote.symbol}</span>
-                <span className="mono pl-launch-muted">{age(b.at, now)}</span>
-                <ExternalLink size={12} />
-              </span>
-            </a>
-          ))}
-        </div>
-      ) : (
-        <p className="pl-launch-muted pl-launch-small">No burns yet. The first one comes with the first daily process after trading starts.</p>
-      )}
-    </Card>
-  );
-}
-
-/** 0.1.0 tokens: buyback and holder rewards shares. */
-function LegacyEconomics({ data }) {
-  const t = data.token;
-  const e = t.economics;
-  const totals = data.vault?.totals;
-  const qd = t.quote.decimals;
-  const xPct = (e.xShares || []).reduce((s, x) => s + Number(x.bps), 0);
-  const youBps = 10_000 - e.buybackBps - e.rewardsBps - xPct;
-  return (
-    <Card className="pl-launch-econ-card">
-      <div className="pl-launch-section-head">
-        <span className="pl-launch-section-title">Economics</span>
-        <Badge tone="neutral">0.1.0</Badge>
-      </div>
-      <p className="pl-launch-section-desc">
-        Launched with Place Launch 0.1.0: each trade pays 1%, 0.75% to the creator vault and 0.25% to Place. The vault splits the creator part like this.
-      </p>
-      <dl className="pl-place-kv">
-        <div>
-          <dt>
-            <Flame size={13} /> Buyback
-          </dt>
-          <dd>
-            <span className="mono">{bpsText(e.buybackBps)}</span> {e.buybackBps ? (e.buybackBurn ? 'and burn' : 'kept by the creator') : ''}
-          </dd>
-        </div>
-        <div>
-          <dt>
-            <Gift size={13} /> Holder rewards
-          </dt>
-          <dd className="mono">{bpsText(e.rewardsBps)}</dd>
-        </div>
-        {xPct > 0 && (
-          <div>
-            <dt>X accounts</dt>
-            <dd className="mono">{bpsText(xPct)}</dd>
-          </div>
-        )}
-        <div>
-          <dt>Creator</dt>
-          <dd className="mono">{bpsText(youBps)}</dd>
-        </div>
-        {totals && (
-          <>
-            <div>
-              <dt>Fees collected</dt>
-              <dd className="mono">{amount(Number(formatAmount(totals.collected, qd, { maxDecimals: 8 }).replace(/,/g, '')), t.quote.symbol)}</dd>
-            </div>
-            <div>
-              <dt>{e.buybackBurn ? 'Bought back and burned' : 'Bought back'}</dt>
-              <dd className="mono">{amount(Number(formatAmount(totals.boughtBackTokens, 18, { maxDecimals: 2 }).replace(/,/g, '')), t.symbol)}</dd>
-            </div>
-            <div>
-              <dt>Sent to holder rewards</dt>
-              <dd className="mono">{amount(Number(formatAmount(totals.toCampaigns, qd, { maxDecimals: 8 }).replace(/,/g, '')), t.quote.symbol)}</dd>
-            </div>
-          </>
-        )}
-      </dl>
-    </Card>
-  );
-}
-
-function CampaignRows({ campaigns, t }) {
-  return (
-    <div className="pl-launch-hub-list">
-      {campaigns.slice(0, 4).map((c) => (
-        <Link key={`${c.hub}-${c.id}`} to={campaignPath(c)} className="pl-launch-hub-row">
-          <span>
-            Campaign #{c.id}
-            {c.fromVault && <span className="pl-launch-muted"> · community fund</span>}
-          </span>
-          <span className="pl-launch-hub-row-right">
-            {c.rewardToken === t.quote.address || (c.rewardToken === 'eth' && t.quote.address === 'eth') ? (
-              <span className="mono">{formatAmount(c.pool, t.quote.decimals)} {t.quote.symbol}</span>
-            ) : c.rewardToken === t.address ? (
-              <span className="mono">{compact(num(c.pool, 18, 0))} {t.symbol}</span>
-            ) : (
-              <span className="mono">{c.rewardSymbol ? `${compact(num(c.pool, c.rewardDecimals ?? 18, 6), { decimals: 6 })} ${c.rewardSymbol}` : shortAddress(c.rewardToken)}</span>
-            )}
-            <StatusBadge status={c.status} />
-          </span>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-function HubRewards({ data }) {
-  const t = data.token;
-  const campaigns = data.campaigns || [];
-  const official = campaigns.filter((c) => c.section !== 'community');
-  const community = campaigns.filter((c) => c.section === 'community');
-  const staking = data.staking || [];
-  const shares = tokenShares(t.economics);
-  return (
-    <Card className="pl-launch-hub-card">
-      <div className="pl-launch-section-head">
-        <span className="pl-launch-section-title">Holder rewards in Place</span>
-        <Badge tone="accent">Place hub</Badge>
-      </div>
-      <p className="pl-launch-section-desc">
-        {shares
-          ? shares.fund
-            ? 'Part of every trade fills a community fund. The creator turns it into Place campaigns and staking programs for holders, never into their own wallet.'
-            : 'This token has no community fund share yet. Its creator can add one later. Anyone can still start a campaign for its holders.'
-          : t.economics.rewardsBps
-            ? 'Part of every trade fills a rewards pool that turns into Place campaigns for all holders.'
-            : 'This token has no holder rewards share. Anyone can still start a campaign for its holders.'}
-      </p>
-      <span className="pl-launch-field-label">Official</span>
-      {official.length ? <CampaignRows campaigns={official} t={t} /> : <p className="pl-launch-muted pl-launch-small">No campaigns from the creator or the fund yet.</p>}
-      {community.length > 0 && (
-        <>
-          <span className="pl-launch-field-label">From the community</span>
-          <CampaignRows campaigns={community} t={t} />
-        </>
-      )}
-      {staking.length > 0 && (
-        <>
-          <span className="pl-launch-field-label">Staking</span>
-          <div className="pl-launch-hub-list">
-            {staking.slice(0, 3).map((p) => (
-              <Link key={p.id} to={`/staking?program=${p.id}`} className="pl-launch-hub-row">
-                <span className="pl-launch-inline">
-                  <Coins size={13} />
-                  {compact(num(p.rewardPerEpoch, p.rewardToken.decimals, 4))} {p.rewardToken.symbol} per epoch
-                </span>
-                <span className="pl-launch-hub-row-right">
-                  <span className="mono pl-launch-muted">{p.epochCount} × {Math.round(p.epochDuration / 3600)}h</span>
-                  <StatusBadge status={p.status === 'live' ? 'Live' : p.status === 'ended' ? 'Ended' : 'Upcoming'} />
-                </span>
-              </Link>
+        <div className="pl-launch-tabs-scroll" ref={strip}>
+          <div className="seg soft" role="tablist" aria-label="Token details">
+            {tabs.map((x) => (
+              <button key={x.id} type="button" role="tab" aria-selected={active === x.id} onClick={() => open(x.id)}>
+                {x.label}
+                {x.count != null && <span className="mono">{x.count}</span>}
+              </button>
             ))}
           </div>
-        </>
-      )}
-      <Button as={Link} to={`/token/${t.address}`} fullWidth>
-        Open in Place hub
-        <ArrowUpRight size={15} />
-      </Button>
+        </div>
+        {active === 'transactions' && (
+          <span className="pl-launch-muted pl-launch-activity-sub">
+            24h: <span className="pl-launch-buy mono">{buys} buys</span> · <span className="pl-launch-sell mono">{sells} sells</span> · <span className="mono">{data.activity24h.traders}</span> traders
+          </span>
+        )}
+      </div>
+      <div role="tabpanel" className={active === 'transactions' || active === 'holders' ? '' : 'pl-launch-tab-panel'}>
+        {active === 'transactions' && <Trades token={token} trades={trades} now={now} />}
+        {active === 'holders' && <Holders token={token} />}
+        {active === 'economy' && <EconomyTab data={data} econ={econ} now={now} />}
+        {active === 'updates' && <UpdatesTab data={data} now={now} />}
+        {active === 'burn' && <BurnTab data={data} econ={econ} now={now} />}
+        {active === 'rewards' && <RewardsTab data={data} econ={econ} now={now} />}
+        {active === 'campaigns' && <CampaignsTab data={data} econ={econ} />}
+        {active === 'disclosures' && <DisclosuresTab data={data} econ={econ} />}
+      </div>
     </Card>
   );
 }
 
-function About({ data }) {
-  const t = data.token;
+/** Creator, Created, Lifetime volume and (0.3.0) Creator and Protocol revenue, under the header. */
+function Facts({ data, token: t }) {
   const { data: prof } = useProfile(t.creator);
-  const p = prof?.profile;
+  const name = prof?.profile?.name;
+  const q = t.quote;
+  const r = data.revenue;
+  const rev = (raw) => {
+    const v = units(raw, q.decimals);
+    return q.usd != null ? usd(v * q.usd) : `${compact(v, { decimals: 4 })} ${q.symbol}`;
+  };
+  return (
+    <dl className="pl-launch-facts">
+      <div>
+        <dt>Creator</dt>
+        <dd className="pl-launch-inline">
+          {name && <span className="pl-launch-strong">{name}</span>}
+          <AddressLink address={t.creator} />
+        </dd>
+      </div>
+      <div>
+        <dt>Created</dt>
+        <dd>
+          {t.createdTx ? (
+            <a className="pl-place-link" href={explorerTx(t.createdTx)} target="_blank" rel="noopener noreferrer">
+              {formatUtc(t.createdAt)} <ExternalLink size={12} />
+            </a>
+          ) : (
+            formatUtc(t.createdAt)
+          )}
+        </dd>
+      </div>
+      <div>
+        <dt>Lifetime volume</dt>
+        <dd className="mono">{money(t.volumeAllUsd, t.volumeAll, q.symbol)}</dd>
+      </div>
+      {r && (
+        <>
+          <div>
+            <dt>Creator revenue</dt>
+            <dd className="mono">{rev(r.creator)}</dd>
+          </div>
+          <div>
+            <dt>Protocol revenue</dt>
+            <dd className="mono">{rev(String(BigInt(r.protocol || 0) + BigInt(r.antiSnipe || 0)))}</dd>
+          </div>
+        </>
+      )}
+    </dl>
+  );
+}
+
+function About({ data, econ }) {
+  const t = data.token;
   return (
     <Card className="pl-launch-about">
       <span className="pl-launch-section-title">About</span>
@@ -437,8 +285,12 @@ function About({ data }) {
           </dd>
         </div>
         <div>
-          <dt>Type</dt>
+          <dt>Standard</dt>
           <dd>{t.kind === 'b20' ? 'B20 (Base standard)' : 'ERC-20'}</dd>
+        </div>
+        <div>
+          <dt>Launch type</dt>
+          <dd>{econ && econ.generation >= 3 ? `${econ.type === 'economy' ? 'Economy' : 'Standard'}, ${t.version}` : t.version}</dd>
         </div>
         <div>
           <dt>Pair</dt>
@@ -454,30 +306,11 @@ function About({ data }) {
             <dd className="mono">{compact(t.burned)}</dd>
           </div>
         )}
-        <div>
-          <dt>Created</dt>
-          <dd>
-            {t.createdTx ? (
-              <a className="pl-place-link" href={explorerTx(t.createdTx)} target="_blank" rel="noopener noreferrer">
-                {formatUtc(t.createdAt)} <ExternalLink size={12} />
-              </a>
-            ) : (
-              formatUtc(t.createdAt)
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Creator</dt>
-          <dd className="pl-launch-inline">
-            {p?.name && <span className="pl-launch-strong">{p.name}</span>}
-            <AddressLink address={t.creator} />
-          </dd>
-        </div>
         {t.devBuy && (
           <div>
             <dt>Dev buy</dt>
             <dd className="mono">
-              {compact(Number(formatAmount(t.devBuy.amountOut, 18, { maxDecimals: 0 }).replace(/,/g, '')))} {t.symbol}
+              {compact(units(t.devBuy.amountOut, 18, 0))} {t.symbol}
             </dd>
           </div>
         )}
@@ -487,6 +320,14 @@ function About({ data }) {
             <AddressLink address={t.vault} />
           </dd>
         </div>
+        {data.communityVault && (
+          <div>
+            <dt>Community pool</dt>
+            <dd>
+              <AddressLink address={data.communityVault} />
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Metadata</dt>
           <dd>{t.metadataEditable ? 'Name and logo can change' : 'Fixed'}; ticker fixed</dd>
@@ -541,6 +382,7 @@ export default function LaunchTokenPage() {
 
   const t = live;
   const q = t.quote;
+  const econ = tokenEconomy(t);
   return (
     <div className="pl-launch pl-launch-token">
       <Link to={launchPath()} className="pl-place-back">
@@ -558,6 +400,11 @@ export default function LaunchTokenPage() {
             <CopyAddress address={t.address} />
             <KindBadge kind={t.kind} />
             <Badge tone="neutral">{q.symbol} pair</Badge>
+            {econ?.type === 'economy' && (
+              <Badge tone="accent">
+                Tax {econ.buyTax}% / {econ.sellTax}%
+              </Badge>
+            )}
             <Badge tone="accent">
               <Rocket size={11} /> Launched on Place
             </Badge>
@@ -574,11 +421,12 @@ export default function LaunchTokenPage() {
         </div>
       </header>
 
+      <Facts data={data} token={t} />
+
       <div className="pl-launch-token-tiles">
         <Tile label="Market cap" value={money(t.marketCapUsd, t.marketCap, q.symbol)} sub={`FDV ${money(t.fdvUsd, t.fdv, q.symbol)}`} />
         <Tile label="Liquidity" value={money(t.liquidity.valueUsd, t.liquidity.value, q.symbol)} sub={`${compact(t.liquidity.quote, { decimals: 4 })} ${q.symbol} in pool`} />
-        <Tile label="Volume 24h" value={money(t.volume24hUsd, t.volume24h, q.symbol)} sub={`${t.trades24h} trades`} />
-        <Tile label="All-time volume" value={money(t.volumeAllUsd, t.volumeAll, q.symbol)} sub={`${t.trades} trades`} />
+        <Tile label="Volume 24h" value={money(t.volume24hUsd, t.volume24h, q.symbol)} sub={`${t.trades24h} trades, ${t.trades} all time`} />
         <Tile label="Holders" value={compact(t.holders)} icon={Users} sub={`Since ${formatUtc(t.createdAt).replace(/, \d\d:\d\d UTC/, '')}`} />
       </div>
 
@@ -586,16 +434,13 @@ export default function LaunchTokenPage() {
         <div className="pl-place-stack">
           <Chart token={t} />
           {narrow && <SwapPanel token={t} />}
-          <Activity data={data} token={t} now={now} />
+          <TokenTabs data={data} token={t} econ={econ} now={now} />
         </div>
         <div className="pl-place-stack">
           {!narrow && <SwapPanel token={t} />}
-          <HubRewards data={data} />
-          <Economics data={data} now={now} />
-          <Burns data={data} now={now} />
-          <About data={data} />
+          <About data={data} econ={econ} />
           <Link to={consolePath('fees')} className="pl-launch-muted pl-launch-small pl-launch-console-link">
-            Created this token? Claim its fees in the creator console
+            Created this token? Claim its fees in your profile
           </Link>
         </div>
       </div>

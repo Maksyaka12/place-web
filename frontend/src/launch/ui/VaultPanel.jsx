@@ -8,10 +8,10 @@ import { Card, Badge, Button, Alert } from '../../themes/place/components/ui';
 import { TxButton, TxResult } from '../../themes/place/pages/place/parts';
 import { usePlaceTx } from '../../place/hooks';
 import { formatAmount, formatUtc, parseAmount } from '../../place/format';
-import { CREATOR_VAULT_ABI } from '../abi.js';
+import { V020_CREATOR_VAULT_ABI as CREATOR_VAULT_ABI } from '../abi.legacy.js';
 import { useFundQuote } from '../hooks.js';
 import { ETH } from '../swap.js';
-import { TokenLogo, EconomicsBar, launchTokenPath } from './parts.jsx';
+import { TokenLogo, AllocationBar, launchTokenPath } from './parts.jsx';
 
 const HOUR = 3600;
 const DAY = 86400;
@@ -239,7 +239,7 @@ function EconomicsForm({ v, onDone }) {
     <div className="pl-launch-fund-form pl-place-form">
       {pct('Burn', burn, setBurn, cur.burnBps / 100, Flame)}
       {pct('Community fund', fund, setFund, cur.communityBps / 100, Users)}
-      <EconomicsBar burn={burn} fund={fund} you={Math.max(0, 100 - burn - fund)} />
+      <AllocationBar shares={{ creator: Math.max(0, 100 - burn - fund), burn, community: fund }} labels={{ creator: 'You', community: 'Community fund' }} />
       {over && <span className="pl-place-hint error">Burn and fund add up to more than 100%</span>}
       <span className="pl-place-hint">Applies to fees collected from now on. This cannot be undone.</span>
       <TxButton
@@ -285,7 +285,7 @@ export function VaultPanel({ item, PayoutForm }) {
         <PayoutForm vault={v.address} current={v.payout} />
       </div>
 
-      <EconomicsBar burn={e.burnBps / 100} fund={e.communityBps / 100} you={e.creatorBps / 100} />
+      <AllocationBar shares={{ creator: e.creatorBps / 100, burn: e.burnBps / 100, community: e.communityBps / 100 }} labels={{ creator: 'You', community: 'Community fund' }} />
 
       <div className="pl-launch-fee-grid three">
         <div className="pl-launch-fee-block">

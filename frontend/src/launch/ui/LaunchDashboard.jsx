@@ -1,6 +1,6 @@
 // Launchpad home (/launch): live trades, the headline numbers, Trending now, and every launch as cards
 // with All / Crypto / Stocks tabs and Trending / Vol 24h / New / Liquidity sorting.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, ArrowRight, Flame, Zap, Sprout, Droplets, Search, Rocket, LayoutDashboard } from 'lucide-react';
 import { Button, Card, Tile, EmptyState } from '../../themes/place/components/ui';
@@ -8,7 +8,6 @@ import { QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useNow } from '../../place/hooks';
 import { isTestnet } from '../../place/chain';
 import { useLaunchStats, useLaunchTokens } from '../hooks.js';
-import { LiveTicker } from './LiveTicker.jsx';
 import { useLaunchLive, useLiveTokens } from '../live.js';
 import { TokenCard, money } from './TokenCard.jsx';
 import { TokenLogo, launchTokenPath, launchNewPath, consolePath } from './parts.jsx';
@@ -94,13 +93,16 @@ function Trending({ now }) {
   );
 }
 
+/** The launchpad feed. The top-bar search arrives as `?q=`. */
 export default function LaunchDashboard() {
   useLaunchLive();
   const now = useNow(30_000);
   const [params, setParams] = useSearchParams();
   const category = CATEGORIES.some((c) => c.id === params.get('tab')) ? params.get('tab') : 'all';
   const sort = SORTS.some((s) => s.id === params.get('sort')) ? params.get('sort') : 'trending';
-  const [search, setSearch] = useState('');
+  const urlQuery = params.get('q') || '';
+  const [search, setSearch] = useState(urlQuery);
+  useEffect(() => setSearch(urlQuery), [urlQuery]);
   const [pages, setPages] = useState(1);
 
   const set = (key, value, fallback) => {
@@ -120,8 +122,6 @@ export default function LaunchDashboard() {
 
   return (
     <div className="pl-launch">
-      <LiveTicker />
-
       <div className="pl-launch-hero">
         <div className="pl-launch-hero-main">
           <h1 className="page-title">Launchpad</h1>
@@ -135,7 +135,7 @@ export default function LaunchDashboard() {
             </Button>
             <Button as={Link} to={consolePath()} size="lg">
               <LayoutDashboard size={18} />
-              Creator console
+              Profile
             </Button>
           </div>
           <Metrics />

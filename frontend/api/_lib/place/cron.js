@@ -9,6 +9,7 @@ import { makePublisher } from './publisher.js';
 import { pinText, fetchIpfsText } from './ipfs.js';
 import { json } from '../common.js';
 import { runKeeper, makeKeeperWallet, keeperConfig } from '../launch/keeper.js';
+import { runRewardsPublisher } from '../launch/rewardsPublisher.js';
 
 export function placeChains() {
   return (process.env.PLACE_CHAINS || '84532').split(',').map((s) => Number(s.trim())).filter(Boolean);
@@ -35,13 +36,26 @@ export async function runTick({ chainId, db, budgetMs = 240_000 }) {
       publisher: makePublisher({ chainId, alchemyKey: key, readClient: client }),
     },
   });
-  // Place Launch keeper: daily process() and default campaigns of 0.2.0 vaults (logged in keeper_runs).
+  // Place Launch keeper: daily closeStreams / convert / default campaigns (0.3.0), process() and default
+  // campaigns of 0.2.0 vaults (logged in keeper_runs).
   try {
     const config = keeperConfig();
     const wallet = config.privateKey ? makeKeeperWallet({ chainId, alchemyKey: key, privateKey: config.privateKey, readClient: client }) : null;
     out.keeper = await runKeeper({ db, client, wallet, chainId, now: Math.floor(Date.now() / 1000), config, budgetMs: 60_000 });
   } catch (e) {
     out.keeper = { error: e.message };
+  }
+  // Place Launch rewards: the daily holder / trader tables of closed days, pinned, roots via publishRoots.
+  try {
+    let publisher = null;
+    try {
+      publisher = makePublisher({ chainId, alchemyKey: key, readClient: client });
+    } catch {
+      publisher = null; // no PUBLISHER_PRIVATE_KEY: tables are still built
+    }
+    out.rewards = await runRewardsPublisher({ db, client, chainId, publisher, alchemyKey: key, fetchFn: fetch, ipfs: { pin: (text, name) => pinText(text, { name }) }, budgetMs: 30_000 });
+  } catch (e) {
+    out.rewards = { error: e.message };
   }
   out.ms = Date.now() - started;
   return out;

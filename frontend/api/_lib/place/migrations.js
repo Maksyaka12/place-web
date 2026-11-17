@@ -470,4 +470,212 @@ create table keeper_runs (
 create index keeper_runs_vault on keeper_runs (chain_id, vault, at desc);
 `,
   },
+  {
+    name: '008_launch_v3',
+    sql: `
+-- Place Launch 0.3.0: Standard / Economy launches with five baskets, burn in the token (FeeEscrow), daily
+-- reward streams (PlaceRewardsDistributor, cumulative Merkle roots) and the community vault. Tax rates and
+-- shares are in 1e8 = 100% (PlaceFeeMath.PERCENTAGE_SCALE), epochs are UTC days (unix seconds / 86400).
+
+-- The frozen economics of a 0.3.0 launch (LaunchEconomyConfigured + LaunchTaxConfigured).
+alter table launch_economy
+  add column launch_type       text check (launch_type in ('standard', 'economy')),
+  add column config_version    bigint,
+  add column buy_tax_rate      integer,
+  add column sell_tax_rate     integer,
+  add column creator_share     integer,
+  add column holders_share     integer,
+  add column traders_share     integer,
+  add column burn_share        integer,
+  add column community_share   integer,
+  add column min_holding       numeric(78,0),
+  add column min_trader_volume numeric(78,0),
+  add column reward_token      text,
+  add column creator_vault     text,
+  add column community_vault   text,
+  add column anti_snipe        boolean;
+create index launch_economy_community on launch_economy (chain_id, community_vault);
+
+-- 0.3.0 QuoteLimitsUpdated has only the default-campaign minimum.
+alter table launch_quote_limits alter column max_burn_per_process drop not null;
+
+-- Every tax credit of the 0.3.0 hook: protocol, anti_snipe, creator, holders, traders, community (in the pair
+-- asset) and burn (in the token). Lifetime creator / protocol revenue and the basket history come from here.
+create table launch_tax_credits (
+  chain_id  integer not null,
+  block     bigint  not null,
+  log_index integer not null,
+  token     text    not null,
+  kind      text    not null check (kind in ('protocol', 'anti_snipe', 'creator', 'holders', 'traders', 'community', 'burn')),
+  recipient text,
+  currency  text    not null,
+  amount    numeric(78,0) not null,
+  tx        text    not null,
+  at        timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index launch_tax_credits_token on launch_tax_credits (chain_id, token, kind);
+
+-- Trade events of the 0.3.0 hook. counted = the trade counts for trader rewards (not a swap of the rewards
+-- distributor or a vault). epoch = UTC day of the block.
+create table launch_trades (
+  chain_id     integer not null,
+  block        bigint  not null,
+  log_index    integer not null,
+  token        text    not null,
+  executor     text    not null,
+  trader       text    not null,
+  is_buy       boolean not null,
+  quote_volume numeric(78,0) not null,
+  quote_fee    numeric(78,0) not null,
+  epoch        bigint  not null,
+  counted      boolean not null,
+  tx           text    not null,
+  at           timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index launch_trades_token on launch_trades (chain_id, token, epoch);
+
+-- Daily trader volume per token (sum of counted Trade.quoteVolume), the trader rewards table input.
+create table launch_trader_volume (
+  chain_id integer not null,
+  token    text    not null,
+  epoch    bigint  not null,
+  trader   text    not null,
+  volume   numeric(78,0) not null default 0,
+  trades   integer not null default 0,
+  primary key (chain_id, token, epoch, trader)
+);
+
+-- FeeEscrow.burn(token): tokens sent to 0x…dEaD by anyone.
+create table launch_burns (
+  chain_id  integer not null,
+  block     bigint  not null,
+  log_index integer not null,
+  token     text    not null,
+  caller    text    not null,
+  amount    numeric(78,0) not null,
+  tx        text    not null,
+  at        timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index launch_burns_token on launch_burns (chain_id, token, block);
+
+-- PlaceRewardsDistributor streams: Economy streams of a launch (LaunchStreamRegistered, kind 0 holders /
+-- 1 traders) and streams funded up front (StreamCreated, by anyone or a community vault). Totals follow the
+-- distributor's events: funded (EpochClosed.totalFunded), allocated (RootPublished.cumulativeTotal), claimed.
+create table reward_streams (
+  chain_id          integer not null,
+  stream_id         text    not null,
+  distributor       text    not null,
+  token             text    not null,
+  kind              smallint not null,
+  economy           boolean not null,
+  reward_token      text    not null,
+  source            text,
+  funder            text,
+  start_epoch       bigint  not null,
+  epoch_count       bigint  not null default 0,
+  reward_per_epoch  numeric(78,0) not null default 0,
+  criterion         numeric(78,0) not null default 0,
+  fee               numeric(78,0) not null default 0,
+  metadata_uri      text,
+  last_closed_epoch bigint,
+  funded            numeric(78,0) not null default 0,
+  allocated         numeric(78,0) not null default 0,
+  claimed           numeric(78,0) not null default 0,
+  reclaimed        numeric(78,0) not null default 0,
+  root              text,
+  root_epoch        bigint,
+  root_uri          text,
+  created_block     bigint  not null,
+  created_tx        text    not null,
+  created_at        timestamptz not null,
+  primary key (chain_id, stream_id)
+);
+create index reward_streams_token on reward_streams (chain_id, token);
+
+-- Closed epochs (EpochClosed): what the escrow paid in that day and the stream's funded total after it.
+create table reward_epochs (
+  chain_id     integer not null,
+  stream_id    text    not null,
+  epoch        bigint  not null,
+  collected    numeric(78,0) not null,
+  total_funded numeric(78,0) not null,
+  tx           text    not null,
+  at           timestamptz not null,
+  primary key (chain_id, stream_id, epoch)
+);
+
+-- Converted / ConversionDeferred / RootPublished / UnallocatedReclaimed, as a log.
+create table reward_stream_events (
+  chain_id  integer not null,
+  block     bigint  not null,
+  log_index integer not null,
+  stream_id text    not null,
+  kind      text    not null,
+  amount    numeric(78,0),
+  amount2   numeric(78,0),
+  epoch     bigint,
+  data      text,
+  tx        text    not null,
+  at        timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index reward_stream_events_stream on reward_stream_events (chain_id, stream_id, block);
+
+create table reward_claims (
+  chain_id   integer not null,
+  block      bigint  not null,
+  log_index  integer not null,
+  stream_id  text    not null,
+  account    text    not null,
+  amount     numeric(78,0) not null,
+  cumulative numeric(78,0) not null,
+  tx         text    not null,
+  at         timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index reward_claims_account on reward_claims (chain_id, account);
+
+-- The publisher's daily tables: one per stream and closed epoch. status: empty (nobody eligible, the budget
+-- waits), built (pinned, not sent yet), sent, published (RootPublished seen), failed.
+create table reward_tables (
+  chain_id         integer not null,
+  stream_id        text    not null,
+  epoch            bigint  not null,
+  root             text,
+  cumulative_total numeric(78,0) not null,
+  budget           numeric(78,0) not null,
+  eligible         integer not null,
+  uri              text,
+  status           text    not null check (status in ('empty', 'built', 'sent', 'published', 'failed')),
+  tx               text,
+  error            text,
+  created_at       timestamptz not null default now(),
+  primary key (chain_id, stream_id, epoch)
+);
+
+-- Leaves of each table: the account's amount of that day, its cumulative amount and Merkle proof.
+create table reward_allocations (
+  chain_id   integer not null,
+  stream_id  text    not null,
+  epoch      bigint  not null,
+  account    text    not null,
+  amount     numeric(78,0) not null,
+  cumulative numeric(78,0) not null,
+  proof      text    not null,
+  primary key (chain_id, stream_id, epoch, account)
+);
+create index reward_allocations_account on reward_allocations (chain_id, account);
+
+-- The last block of each UTC day (for holder balances at the end of the day), found once by binary search.
+create table launch_epoch_blocks (
+  chain_id integer not null,
+  epoch    bigint  not null,
+  block    bigint  not null,
+  primary key (chain_id, epoch)
+);
+`,
+  },
 ];

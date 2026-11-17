@@ -41,6 +41,9 @@ export function SwapPanel({ token }) {
   const q = quoteAddress(token.quote.address);
   const key = useMemo(() => poolKey(token.address, q, hook), [token.address, q, hook]);
   const dir = swapDirection({ key, side, token: token.address });
+  // Economy tokens (0.3.0) have their own buy and sell tax; everything else pays 1%.
+  const econ = token.economics?.buyTax != null ? token.economics : null;
+  const feePct = econ ? (side === 'buy' ? econ.buyTax : econ.sellTax) : 1;
   const inDecimals = side === 'buy' ? token.quote.decimals : 18;
   const inSymbol = side === 'buy' ? quoteSym : token.symbol;
   const outSymbol = side === 'buy' ? token.symbol : quoteSym;
@@ -128,7 +131,7 @@ export function SwapPanel({ token }) {
 
       {snipe && (
         <Alert tone="warn" icon={<Timer size={16} />}>
-          Anti-snipe fee is <span className="mono">{snipe.feePct.toFixed(0)}%</span> right now. It falls to 1% in{' '}
+          Anti-snipe fee is <span className="mono">{snipe.feePct.toFixed(0)}%</span> right now. It falls to {feePct}% in{' '}
           <span className="mono">{snipe.secondsLeft}s</span>, so waiting a few seconds gets you far more.
         </Alert>
       )}
@@ -178,8 +181,8 @@ export function SwapPanel({ token }) {
           <dd className="mono">{minOut != null ? `${formatAmount(minOut, outDecimals, { maxDecimals: 6 })} ${outSymbol}` : '—'}</dd>
         </div>
         <div>
-          <dt>Trading fee</dt>
-          <dd>{snipe ? <span className="mono">{snipe.feePct.toFixed(0)}% (anti-snipe)</span> : '1%, in ' + quoteSym}</dd>
+          <dt>{econ ? (side === 'buy' ? 'Buy tax' : 'Sell tax') : 'Trading fee'}</dt>
+          <dd>{snipe ? <span className="mono">{snipe.feePct.toFixed(0)}% (anti-snipe)</span> : `${feePct}%, in ${quoteSym}`}</dd>
         </div>
         <div>
           <dt>Slippage</dt>

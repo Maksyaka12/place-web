@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { User, Settings, LogOut } from 'lucide-react';
+import { User, Settings, LogOut, Wallet } from 'lucide-react';
 import { FEATURES } from '../../config/features';
 import './WalletPages.css';
 
-// Popover opened from the sidebar wallet pill: Account, Settings, Logout. `trigger(toggle, open)` renders the pill;
-// `side` = 'up' (expanded sidebar) or 'right' (collapsed sidebar).
+// Popover opened from the address pill in the top bar: Wallet, Account, Settings, Logout. `trigger(toggle, open)`
+// renders the pill; the menu opens below it.
 
-export default function WalletMenu({ theme = 'dark', side = 'up', onSelect, onLogout, trigger }) {
+export default function WalletMenu({ theme = 'dark', onSelect, onLogout, trigger }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -33,7 +33,10 @@ export default function WalletMenu({ theme = 'dark', side = 'up', onSelect, onLo
     <div ref={ref} className={`pw-${theme} pw-menu-wrap`}>
       {trigger(() => setOpen((v) => !v), open)}
       {open && (
-        <div className={`pw-menu pw-menu-${side}`} role="menu">
+        <div className="pw-menu pw-menu-down" role="menu">
+          <button type="button" role="menuitem" onClick={pick(() => onSelect('wallet'))}>
+            <Wallet size={15} /> Wallet
+          </button>
           <button type="button" role="menuitem" onClick={pick(() => onSelect('account'))}>
             <User size={15} /> Account
           </button>

@@ -10,7 +10,8 @@ import { buildContractUri, decodeDataUri, readContractUri } from '../src/launch/
 import { poolKey, swapDirection, encodeSwap, swapCalls, antiSnipe, withSlippage, UNIVERSAL_ROUTER_ABI, ETH, DIRECT_ROUTE } from '../src/launch/swap.js';
 import { LAUNCH_DEPLOYMENTS } from '../src/launch/deployments.js';
 
-const d = LAUNCH_DEPLOYMENTS[84532];
+// Swaps go to the pool of a live release: 0.2.0 until 0.3.0 is deployed (its hook is still a placeholder).
+const d = { ...LAUNCH_DEPLOYMENTS[84532], ...LAUNCH_DEPLOYMENTS[84532].legacy[0] };
 const B20 = '0xb200000000000000000000edee389ab594913e01';
 const USDC = d.quotes.usdc;
 

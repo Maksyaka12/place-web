@@ -1,21 +1,27 @@
-// Place Launch 0.2.0 economy in the API: the creator vault's three baskets, the
-// community fund, burns, fund swaps for campaigns and staking, and PlaceStaking programs.
+// Place Launch economy in the API: the 0.2.0 creator vault's three baskets, community fund, burns and fund
+// swaps; the 0.3.0 Community Pool's fund quotes; PlaceStaking programs of every release.
 //
-//   GET launch/fund-quote  ?chain&token&rewardToken&amountIn[&slippageBps&kind=campaign|staking]
+//   GET launch/fund-quote  ?chain&token&rewardToken&amountIn[&slippageBps&kind=campaign|staking]   (0.2.0 tokens)
+//                          ?chain&token&rewardToken&amountIn[&slippageBps&kind=holders|traders|staking&epochCount
+//                           &startEpoch&criterion&metadataURI&startTime&epochDuration&earlyExit&penaltyBps]  (0.3.0)
 //                          what the fund gets in the reward token (a dry run of fundCampaign with an impossible
-//                          minOut: the vault reverts with SlippageExceeded(amountOut, minOut)), minOut, hub fee
+//                          minOut: the vault reverts with SlippageExceeded(amountOut, minOut)), minOut, fees; for
+//                          0.3.0 also the ready fundCampaign / fundStaking transaction of the Community Pool
 //   GET launch/staking     ?chain[&token&creator&account&limit]   PlaceStaking programs with status and totals
 //   GET launch/staking/position ?chain&id&account                 lots, claimable epochs (previewClaim), txs
 //
 // The token page (`fund`, `burns`, `staking` in launch/token) and the creator panel (vault in launch/creator)
 // use the helpers exported here.
 import { encodeFunctionData, maxUint256 } from 'viem';
-import { CREATOR_VAULT_ABI, PLACE_STAKING_ABI } from '../../../src/launch/abi.js';
+import { PLACE_STAKING_ABI, COMMUNITY_VAULT_ABI, REWARDS_DISTRIBUTOR_ABI } from '../../../src/launch/abi.js';
+import { V020_CREATOR_VAULT_ABI as CREATOR_VAULT_ABI } from '../../../src/launch/abi.legacy.js'; // the 0.2.0 vault
 import { PLACE_HUB_ABI, PLACE_CONFIG_ABI } from '../../../src/place/abi.js';
-import { launchDeployment } from '../../../src/launch/deployments.js';
+import { launchDeployment, deployedReleases, releaseByVersion } from '../../../src/launch/deployments.js';
+import { releaseGeneration, EPOCH } from './indexer.js';
 import { reply, fail, chainOf, addressOf, iso } from '../place/http.js';
 import { ensureTokenMeta } from '../place/tokenMeta.js';
 import { retry } from '../place/chain.js';
+import { quoteUsd } from './prices.js';
 
 const ETH = '0x0000000000000000000000000000000000000000';
 const BPS = 10_000n;
@@ -39,6 +45,11 @@ function chainParts(q) {
   const d = launchDeployment(chainId);
   if (!d) fail(`Place Launch is not deployed on chain ${chainId}`);
   return { chainId, d };
+}
+
+/** PlaceStaking of the newest deployed release (0.3.0 may reuse the 0.2.0 one). */
+export function stakingAddress(chainId) {
+  return deployedReleases(chainId).find((r) => r.staking)?.staking ?? null;
 }
 
 async function simulate(client, address, abi, functionName, args, account) {
@@ -137,7 +148,7 @@ export async function rewardTokens(deps, chainId, { token, quote, registry }) {
 export async function vaultPanelV2(deps, chainId, t, now) {
   const client = deps.client(chainId);
   const pub = await vaultPublicState(deps, chainId, t.vault, now);
-  if (!pub) return { address: t.vault, version: 'current', error: 'Could not read the vault' };
+  if (!pub) return { address: t.vault, version: 'v2', error: 'Could not read the vault' };
   const v = pub.raw;
   const creator = lower(v.currentCreator);
   const claim = await simulate(client, t.vault, CREATOR_VAULT_ABI, 'claim', [], creator);
@@ -147,7 +158,7 @@ export async function vaultPanelV2(deps, chainId, t, now) {
   const { raw, ...rest } = pub;
   void raw;
   return {
-    version: 'current',
+    version: 'v2',
     address: t.vault,
     creator,
     payout: lower(v.payoutAddress),
@@ -204,12 +215,15 @@ async function fundQuote({ query: q }, deps) {
   if (!/^[0-9]{1,78}$/.test(String(q.amountIn || '')) || BigInt(q.amountIn) === 0n) fail('amountIn must be a positive integer (smallest units)');
   const amountIn = BigInt(q.amountIn);
   const [row] = await deps.db.query(
-    `select t.token, t.vault, t.quote, t.current_creator, e.version from launch_tokens t
+    `select t.token, t.vault, t.quote, t.current_creator, e.version, e.community_vault, e.min_holding::text as min_holding from launch_tokens t
      left join launch_economy e on e.chain_id = t.chain_id and e.token = t.token where t.chain_id = $1 and t.token = $2`,
     [chainId, token]
   );
   if (!row?.vault) fail('Not a Place Launch token (or not indexed yet)', 404);
-  if (row.version !== launchDeployment(chainId).version) fail('This token was launched with an older release: its vault has no community fund', 409);
+  const gen = releaseGeneration(row.version || '0.1.0');
+  if (gen >= 3) return fundQuoteV3(q, deps, { chainId, row, rewardToken, amountIn, slippageBps });
+  if (gen !== 2) fail('This token was launched with 0.1.0: its vault has no community fund', 409);
+  const release = releaseByVersion(chainId, row.version);
   const client = deps.client(chainId);
   const creator = row.current_creator;
   const fundAsset = row.quote;
@@ -225,14 +239,14 @@ async function fundQuote({ query: q }, deps) {
   }
   let feeBps = null;
   try {
-    const config = await client.readContract({ address: launchDeployment(chainId).hub, abi: PLACE_HUB_ABI, functionName: 'config' });
+    const config = await client.readContract({ address: release.hub, abi: PLACE_HUB_ABI, functionName: 'config' });
     feeBps = Number(await client.readContract({ address: config, abi: PLACE_CONFIG_ABI, functionName: 'campaignFeeBps', args: [token] }));
   } catch {
     feeBps = null;
   }
   let stakingFeeBps = null;
   try {
-    stakingFeeBps = Number((await client.readContract({ address: launchDeployment(chainId).staking, abi: PLACE_STAKING_ABI, functionName: 'feeConfig' }))[0]);
+    stakingFeeBps = Number((await client.readContract({ address: release.staking, abi: PLACE_STAKING_ABI, functionName: 'feeConfig' }))[0]);
   } catch {
     stakingFeeBps = null;
   }
@@ -258,6 +272,90 @@ async function fundQuote({ query: q }, deps) {
   });
 }
 
+const STREAM_KINDS = { holders: 0, traders: 1 };
+
+/**
+ * 0.3.0 Community Pool: the swap quote (dry run of fundCampaign with an impossible minOut), the fee the program
+ * pays (distributor stream fee or staking fee), and the ready transaction for the creator.
+ */
+async function fundQuoteV3(q, deps, { chainId, row, rewardToken, amountIn, slippageBps }) {
+  if (!row.community_vault) fail('This token has no community basket', 409);
+  const kind = q.kind || 'holders';
+  if (kind !== 'staking' && !(kind in STREAM_KINDS)) fail('kind must be holders, traders or staking');
+  const vault = row.community_vault;
+  const creator = row.current_creator;
+  const fundAsset = row.quote;
+  const client = deps.client(chainId);
+  const now = deps.now();
+  const int = (v, name, def, lo, hi) => {
+    const n = v == null || v === '' ? def : Number(v);
+    if (!Number.isInteger(n) || n < lo || n > hi) fail(`${name} must be ${lo}–${hi}`);
+    return n;
+  };
+  let amountOut;
+  let error = null;
+  if (rewardToken === fundAsset) amountOut = amountIn;
+  else {
+    const probe = { kind: 0, fundAsset, amountIn, rewardToken, minOut: maxUint256, startEpoch: BigInt(Math.floor(now / EPOCH) + 1), epochCount: 1n, criterion: 0n, metadataURI: '' };
+    const sim = await simulate(client, vault, COMMUNITY_VAULT_ABI, 'fundCampaign', [probe], creator);
+    if (sim.revert?.name === 'SlippageExceeded') amountOut = BigInt(sim.revert.args[0]);
+    else error = sim.ok ? 'Unexpected success' : sim.error;
+  }
+  const minOut = amountOut == null ? null : rewardToken === fundAsset ? amountOut : (amountOut * BigInt(10_000 - slippageBps)) / BPS;
+  const r = releaseByVersion(chainId, row.version);
+  let feeBps = null;
+  try {
+    feeBps =
+      kind === 'staking'
+        ? Number((await client.readContract({ address: stakingAddress(chainId), abi: PLACE_STAKING_ABI, functionName: 'feeConfig' }))[0])
+        : Number(await client.readContract({ address: r.rewardsDistributor, abi: REWARDS_DISTRIBUTOR_ABI, functionName: 'streamFeeBps' }));
+  } catch {
+    feeBps = null;
+  }
+  const epochCount = int(q.epochCount, 'epochCount', 30, 1, 365);
+  let tx = null;
+  if (minOut != null) {
+    if (kind === 'staking') {
+      const startTime = int(q.startTime, 'startTime', (Math.floor(now / EPOCH) + 1) * EPOCH, now, now + 365 * EPOCH);
+      const req = {
+        fundAsset, amountIn, rewardToken, minOut, startTime: BigInt(startTime),
+        epochDuration: BigInt(int(q.epochDuration, 'epochDuration', EPOCH, 3600, 30 * EPOCH)),
+        epochCount: BigInt(epochCount),
+        earlyExitMode: q.earlyExit === '1' ? 1 : 0,
+        penaltyBps: int(q.penaltyBps, 'penaltyBps', 0, 0, 5000),
+      };
+      tx = { to: vault, value: '0', from: creator, data: encodeFunctionData({ abi: COMMUNITY_VAULT_ABI, functionName: 'fundStaking', args: [req] }) };
+    } else {
+      const startEpoch = int(q.startEpoch, 'startEpoch', Math.floor(now / EPOCH) + 1, Math.floor(now / EPOCH), Math.floor(now / EPOCH) + 30);
+      // Holders: at least the token's own minimum (or 10 000 tokens); traders: a daily volume in the pair asset.
+      const criterion = q.criterion != null && q.criterion !== '' ? (/^[0-9]{1,78}$/.test(String(q.criterion)) ? BigInt(q.criterion) : fail('criterion must be an integer (smallest units)')) : kind === 'holders' ? BigInt(row.min_holding && row.min_holding !== '0' ? row.min_holding : 10_000n * 10n ** 18n) : 0n;
+      const req = { kind: STREAM_KINDS[kind], fundAsset, amountIn, rewardToken, minOut, startEpoch: BigInt(startEpoch), epochCount: BigInt(epochCount), criterion, metadataURI: String(q.metadataURI || '') };
+      tx = { to: vault, value: '0', from: creator, data: encodeFunctionData({ abi: COMMUNITY_VAULT_ABI, functionName: 'fundCampaign', args: [req] }) };
+    }
+  }
+  const net = (out, bps) => (out == null || bps == null ? null : ((out * BPS) / (BPS + BigInt(bps))).toString());
+  return reply(200, {
+    chainId,
+    token: row.token,
+    version: row.version,
+    vault,
+    kind,
+    fundAsset: outAddr(fundAsset),
+    rewardToken: outAddr(rewardToken),
+    amountIn: amountIn.toString(),
+    amountOut: amountOut?.toString() ?? null,
+    swap: rewardToken !== fundAsset,
+    slippageBps,
+    minOut: minOut?.toString() ?? null,
+    feeBps,
+    budget: net(minOut, feeBps),
+    perEpoch: minOut == null || feeBps == null ? null : (BigInt(net(minOut, feeBps)) / BigInt(epochCount)).toString(),
+    epochCount,
+    tx,
+    error,
+  });
+}
+
 // ─────────────────────────────── PlaceStaking ───────────────────────────────
 
 function programStatus(p, now) {
@@ -269,18 +367,42 @@ function programStatus(p, now) {
   return { status: 'live', epoch: Math.floor((now - start) / Number(p.epoch_duration)), openFrom, end };
 }
 
+/**
+ * USD prices of staking and reward tokens: a pair asset at its pair price, a Place launch at its last pool price
+ * times its pair price. Anything else has no price (null). Also the contract URI (logo) of Place launches.
+ */
+export async function tokenUsd(deps, chainId, addrs, meta) {
+  const launches = await deps.db.query('select token, quote, price, contract_uri from launch_tokens where chain_id = $1 and token = any($2::text[])', [chainId, addrs]);
+  const byToken = new Map(launches.map((r) => [r.token, r]));
+  const quotes = [...new Set([...addrs.filter((a) => !byToken.has(a)), ...launches.map((r) => r.quote)])];
+  await ensureTokenMeta(deps, chainId, quotes.filter((a) => a !== ETH && !meta.has(a)));
+  const qmeta = new Map((await deps.db.query('select address, symbol from token_meta where chain_id = $1 and address = any($2::text[])', [chainId, quotes])).map((m) => [m.address, m.symbol]));
+  const qusd = await quoteUsd(deps, quotes.map((qt) => ({ quote: qt, symbol: qt === ETH ? 'ETH' : qmeta.get(qt) })));
+  const out = new Map();
+  for (const a of addrs) {
+    const l = byToken.get(a);
+    if (l) out.set(a, l.price != null && qusd.get(l.quote) != null ? Number(l.price) * qusd.get(l.quote) : null);
+    else out.set(a, qusd.get(a) ?? null);
+  }
+  return { usd: out, uri: new Map(launches.map((r) => [r.token, r.contract_uri || null])) };
+}
+
 async function stakingView(deps, chainId, rows, now) {
   const addrs = [...new Set(rows.flatMap((p) => [p.staking_token, p.reward_currency]).filter((a) => a !== ETH))];
   await ensureTokenMeta(deps, chainId, addrs);
   const meta = new Map((await deps.db.query('select address, symbol, name, decimals from token_meta where chain_id = $1 and address = any($2::text[])', [chainId, addrs])).map((m) => [m.address, m]));
-  const tokenInfo = (a) => (a === ETH ? { address: 'eth', symbol: 'ETH', decimals: 18 } : { address: a, symbol: meta.get(a)?.symbol ?? null, name: meta.get(a)?.name ?? null, decimals: meta.get(a)?.decimals ?? 18 });
+  const { usd, uri } = await tokenUsd(deps, chainId, [...new Set(rows.flatMap((p) => [p.staking_token, p.reward_currency]))], meta);
+  const tokenInfo = (a) =>
+    a === ETH
+      ? { address: 'eth', symbol: 'ETH', decimals: 18, usd: usd.get(a) ?? null }
+      : { address: a, symbol: meta.get(a)?.symbol ?? null, name: meta.get(a)?.name ?? null, decimals: meta.get(a)?.decimals ?? 18, usd: usd.get(a) ?? null, contractURI: uri.get(a) ?? null };
   return rows.map((p) => {
     const s = programStatus(p, now);
     return {
       id: p.vault_id,
       staking: p.staking,
       creator: p.creator,
-      fromLaunchVault: p.vault === p.creator,
+      fromLaunchVault: p.vault === p.creator || (p.community_vault != null && p.community_vault === p.creator), // creator vault (0.2.0) or Community Pool (0.3.0)
       launchedOnPlace: Boolean(p.launch_token),
       stakingToken: tokenInfo(p.staking_token),
       rewardToken: tokenInfo(p.reward_currency),
@@ -310,6 +432,7 @@ async function stakingView(deps, chainId, rows, now) {
 const STAKING_SELECT = `
   select p.*, p.reward_per_epoch::text as reward_per_epoch, p.total_reward::text as total_reward, p.protocol_fee::text as protocol_fee,
     p.total_staked::text as total_staked, p.claimed::text as claimed, lt.token as launch_token, lt.vault,
+    (select le.community_vault from launch_economy le where le.chain_id = p.chain_id and le.token = p.staking_token) as community_vault,
     (select count(*)::int from staking_positions sp where sp.chain_id = p.chain_id and sp.vault_id = p.vault_id and sp.staked > 0) as stakers`;
 
 /** Programs for one token (token page). */
@@ -350,7 +473,7 @@ async function listStaking({ query: q }, deps) {
     params
   );
   const now = deps.now();
-  return reply(200, { chainId, staking: launchDeployment(chainId).staking, programs: await stakingView(deps, chainId, rows, now) }, q.account ? 'no-store' : 'public, max-age=10');
+  return reply(200, { chainId, staking: stakingAddress(chainId), programs: await stakingView(deps, chainId, rows, now) }, q.account ? 'no-store' : 'public, max-age=10');
 }
 
 async function stakingPosition({ query: q }, deps) {
@@ -399,7 +522,7 @@ async function stakingPosition({ query: q }, deps) {
       tx: {
         claim: claimable.length ? { to: staking, value: '0', data: encodeFunctionData({ abi: PLACE_STAKING_ABI, functionName: 'claim', args: [id, claimable.map((x) => BigInt(x.epoch)), account] }) } : null,
       },
-      stakingContract: d.staking,
+      stakingContract: p.staking || stakingAddress(chainId) || d.staking,
     },
     'no-store'
   );
