@@ -18,7 +18,8 @@
 // Tables (rewardsPublisher.js) follow the same rule as `supported`:
 //   holders  any ERC-20 (Place launches from the indexed transfers, others from Alchemy transfers + balanceOf)
 //   traders  Place 0.3.0 launches only: volumes come from the Place hook's Trade events
-//   nft      collections created through the Place NFT factory only (ownerOf at the end of the day)
+//   nft      collections created through a Place NFT factory only: the hub factory (nft_collections) or the
+//            NFT launchpad 0.3.1 (nft_launch_collections); ownerOf at the end of the day
 import { encodeFunctionData } from 'viem';
 import { REWARDS_DISTRIBUTOR_ABI, PLACE_STAKING_ABI } from '../../../src/launch/abi.js';
 import { launchDeployment, launchReleases, deployedReleases } from '../../../src/launch/deployments.js';
@@ -90,7 +91,8 @@ async function classifyContext(deps, chainId, rows) {
        left join launch_economy e on e.chain_id = t.chain_id and e.token = t.token where t.chain_id = $1 and t.token = any($2::text[])`,
       [chainId, tokens]
     ),
-    deps.db.query('select address, creator from nft_collections where chain_id = $1 and address = any($2::text[])', [chainId, tokens]),
+    deps.db.query(`select address, creator from nft_collections where chain_id = $1 and address = any($2::text[])
+       union all select address, creator from nft_launch_collections where chain_id = $1 and address = any($2::text[])`, [chainId, tokens]),
     deps.db.query('select address from token_meta where chain_id = $1 and address = any($2::text[]) and is_nft', [chainId, tokens]),
     deps.db.query(`select ref from launch_vault_events where chain_id = $1 and kind = 'fund_stream' and ref = any($2::text[])`, [chainId, rows.map((r) => r.stream_id)]),
   ]);
@@ -284,7 +286,11 @@ async function hubAsset({ query: q }, deps) {
      left join launch_economy e on e.chain_id = t.chain_id and e.token = t.token where t.chain_id = $1 and t.token = $2`,
     [chainId, address]
   );
-  const [collection] = await deps.db.query('select creator, created_at from nft_collections where chain_id = $1 and address = $2', [chainId, address]);
+  const [collection] = await deps.db.query(
+    `select creator, created_at from nft_collections where chain_id = $1 and address = $2
+     union all select creator, created_at from nft_launch_collections where chain_id = $1 and address = $2`,
+    [chainId, address]
+  );
   const isNft = Boolean(collection || meta?.is_nft);
   const generation = launch ? generationOf(chainId, launch.version) : null;
   const quoteInfo = launch ? (await metaOf(deps, chainId, [launch.quote]))(launch.quote) : null;

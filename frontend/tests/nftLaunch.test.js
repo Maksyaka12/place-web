@@ -7,6 +7,7 @@ import { encodeAbiParameters, encodeEventTopics } from 'viem';
 import { indexEvents } from '../api/_lib/place/indexer.js';
 import { handlePlace } from '../api/_lib/place/api.js';
 import { poolState, mintStatus, ACC } from '../api/_lib/launch/nft.js';
+import { externalTarget } from '../api/_lib/launch/rewardsPublisher.js';
 import { decideRegistration, tokenLiquidityUsd } from '../api/_lib/launch/projects.js';
 import { registerMessage } from '../src/launch/projects.js';
 import { NFT_FACTORY_ABI, NFT_COLLECTION_ABI } from '../src/launch/nftAbi.js';
@@ -210,7 +211,7 @@ test('NFT indexer: creation, mints, transfers, holders pool, claims, burn and se
 test('collection endpoints: list with filters, page with live pool and the wallet part, holders, account', async () => {
   const restore = deployNft();
   try {
-    const { get } = await setup(collectionLife(), N0 + 100n);
+    const { db, node, get } = await setup(collectionLife(), N0 + 100n);
     const list = await get('launch/collections', { token: PAIR, official: '1' });
     assert.equal(list.body.deployed, true);
     assert.equal(list.body.total, 1);
@@ -248,6 +249,9 @@ test('collection endpoints: list with filters, page with live pool and the walle
     const mine = await get('launch/nft/account', { account: CREATOR });
     assert.equal(mine.body.created[0].address, COLLECTION);
     assert.equal((await get('launch/collection', { address: MINTER })).status, 404);
+
+    // Launchpad collections count as Place collections for NFT holder campaigns: the publisher builds their tables.
+    assert.deepEqual(await externalTarget(db, node, CHAIN, { kind: 0, token: COLLECTION }), { kind: 'nft-holders' });
   } finally {
     restore();
   }

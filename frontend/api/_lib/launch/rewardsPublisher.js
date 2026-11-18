@@ -92,11 +92,15 @@ const ERC165_ABI = parseAbi(['function supportsInterface(bytes4) view returns (b
 
 /**
  * How Place builds tables for a stream whose token was not launched on Place: ERC-20 holders, or holders of
- * a collection made by the Place NFT factory. Trader streams and other NFT collections are not supported.
+ * a collection made by a Place NFT factory (the hub factory or the NFT launchpad). Trader streams and other NFT collections are not supported.
  */
 export async function externalTarget(db, client, chainId, s) {
   if (Number(s.kind) === 1) return { unsupported: UNSUPPORTED.traders };
-  const [collection] = await db.query('select creator from nft_collections where chain_id = $1 and address = $2', [chainId, s.token]);
+  const [collection] = await db.query(
+    `select creator from nft_collections where chain_id = $1 and address = $2
+     union all select creator from nft_launch_collections where chain_id = $1 and address = $2`,
+    [chainId, s.token]
+  );
   if (collection) return { kind: 'nft-holders' };
   const [meta] = await db.query('select is_nft from token_meta where chain_id = $1 and address = $2', [chainId, s.token]);
   let nft = meta?.is_nft ?? null;
