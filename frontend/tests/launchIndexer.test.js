@@ -123,3 +123,18 @@ test('the shared cursor covers the hub and the launchpad from the earliest start
   assert.equal(c.b, String(HEAD - 30n));
   assert.ok(r.from < D.startBlock, 'starts at the hub deployment, before the launchpad');
 });
+
+test('a release that adds contracts takes over the older cursor and re-reads only from their start block', async () => {
+  const { db, b } = await indexed();
+  const [c] = await db.query('select contract, last_block::text as b from indexer_cursors');
+  // The cursor of an older deployment that did not have this release's factory yet.
+  const older = c.contract.split(',').filter((a) => a.toLowerCase() !== D.factory.toLowerCase()).join(',');
+  assert.notEqual(older, c.contract);
+  await db.query('update indexer_cursors set contract = $1', [older]);
+  const swaps = (await one(db, 'select count(*)::int as n from launch_swaps')).n;
+  const r = await indexEvents({ db, client: fakeNode({ logs: b.logs, senders: b.senders, head: HEAD }), chainId: CHAIN, maxRange: 2_000_000n });
+  assert.equal(r.from, D.startBlock, 'goes back to the added factory, not to the hub deployment');
+  assert.equal(r.to, HEAD - 30n);
+  assert.equal((await one(db, 'select count(*)::int as n from launch_swaps')).n, swaps, 'idempotent');
+  assert.equal((await one(db, 'select last_block::text as b from indexer_cursors where contract = $1', [c.contract])).b, String(HEAD - 30n));
+});

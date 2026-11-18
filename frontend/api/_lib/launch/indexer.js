@@ -120,6 +120,22 @@ export function launchStaticAddresses(chainId) {
   return [...new Set(out.filter(Boolean))];
 }
 
+/** The block each static launch contract is indexed from: its release's start block (the earliest when reused). */
+export function launchStaticStarts(chainId) {
+  const out = new Map();
+  for (const r of deployedReleases(chainId)) {
+    if (r.startBlock == null) continue;
+    const gen = releaseGeneration(r.version);
+    const list = [r.factory, r.hook, r.announcementRegistry, r.xRecipientRegistry];
+    if (gen >= 2) list.push(r.staking, r.rewardTokenRegistry);
+    if (gen >= 3) list.push(r.feeEscrow, r.rewardsDistributor);
+    for (const a of list.filter(Boolean).map((x) => x.toLowerCase())) {
+      if (!out.has(a) || r.startBlock < out.get(a)) out.set(a, r.startBlock);
+    }
+  }
+  return out;
+}
+
 /** Every rewards distributor, creator / community vault of the indexed releases: not traders, not holders. */
 export function distributorAddresses(chainId) {
   return [...new Set(deployedReleases(chainId).map((r) => r.rewardsDistributor).filter(Boolean))];

@@ -11,7 +11,7 @@ import { deployment } from '../../../src/place/deployments.js';
 import { NETWORKS, retry } from './chain.js';
 import { launchStartBlock } from '../../../src/launch/deployments.js';
 import { acquireLease, releaseLease } from './snapshotJob.js';
-import { launchStaticAddresses, collectLaunchLogs, insertFreshTokens, applyLaunchLog } from '../launch/indexer.js';
+import { launchStaticAddresses, launchStaticStarts, collectLaunchLogs, insertFreshTokens, applyLaunchLog } from '../launch/indexer.js';
 import { nftStaticAddresses, nftStartBlock, collectNftLogs, applyNftLog } from '../launch/nft.js';
 
 const EVENTS_ABI = [...PLACE_HUB_ABI, ...NFT_FACTORY_ABI].filter((x) => x.type === 'event');
@@ -53,6 +53,33 @@ function cursorKey(addresses) {
 }
 
 /**
+ * Where a new cursor starts. A release that adds contracts changes the key; instead of re-reading all history
+ * from the earliest start block, it takes over the furthest older cursor whose addresses are all still indexed
+ * and goes back only to the earliest start block of the added contracts (every write is idempotent).
+ */
+async function inheritedCursor(db, chainId, addresses, startBlock, startsOf) {
+  const wanted = new Set(addresses.map(lower));
+  const rows = await db.query(`select contract, last_block::text as b from indexer_cursors where chain_id = $1 and contract like 'events:%'`, [chainId]);
+  let best = null;
+  for (const r of rows) {
+    const old = r.contract.slice('events:'.length).split(',').filter(Boolean).map(lower);
+    if (!old.length || !old.every((a) => wanted.has(a))) continue;
+    const b = BigInt(r.b);
+    if (!best || b > best.b) best = { b, old: new Set(old) };
+  }
+  if (!best) return startBlock - 1n;
+  const starts = startsOf();
+  let from = best.b + 1n;
+  for (const a of wanted) {
+    if (best.old.has(a)) continue;
+    const s = starts.get(a);
+    if (s == null) return startBlock - 1n; // unknown start: read everything
+    if (s < from) from = s;
+  }
+  return (from > startBlock ? from : startBlock) - 1n;
+}
+
+/**
  * Indexes events from the cursor towards the chain head (minus `confirmations`), until caught up or the
  * time budget runs out. Returns what it covered.
  */
@@ -76,7 +103,15 @@ export async function indexEvents({
   const startBlock = [...d.hubs.map((h) => h.startBlock), d.nftFactory.startBlock, ...(launchStart != null ? [launchStart] : []), ...(nftStart != null ? [nftStart] : [])].reduce((a, b) => (a < b ? a : b));
   const key = cursorKey(addresses);
   const rows = await db.query('select last_block::text as b from indexer_cursors where chain_id = $1 and contract = $2', [chainId, key]);
-  let cursor = rows.length ? BigInt(rows[0].b) : startBlock - 1n;
+  let cursor = rows.length
+    ? BigInt(rows[0].b)
+    : await inheritedCursor(db, chainId, addresses, startBlock, () => {
+        const starts = launchStaticStarts(chainId);
+        for (const h of d.hubs) starts.set(lower(h.address), h.startBlock);
+        starts.set(lower(d.nftFactory.address), d.nftFactory.startBlock);
+        for (const a of nftStaticAddresses(chainId)) starts.set(lower(a), nftStart);
+        return starts;
+      });
 
   const head = (await retry(() => client.getBlockNumber())) - confirmations;
   const deadline = Date.now() + budgetMs;
