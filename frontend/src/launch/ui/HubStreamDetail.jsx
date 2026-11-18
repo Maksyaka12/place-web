@@ -1,6 +1,7 @@
 // One reward stream of the Rewards hub (/hub?stream=<id>): what it pays and for what, the wallet's claim, the
-// days with their tables, and the calls anyone can make (close a finished day; return the unallocated budget to
-// the funder 30 days after the last day). Every call goes through usePlaceTx (Builder Code).
+// days with their tables, and the calls anyone can make: return the unallocated budget to the funder 30 days after
+// the last day, and, folded under Advanced, close a finished day by hand (Place closes days automatically after
+// 00:00 UTC). Every call goes through usePlaceTx (Builder Code).
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, ExternalLink, Rocket, Sparkles } from 'lucide-react';
 import { Alert, Badge, Card, Tile } from '../../themes/place/components/ui';
@@ -10,7 +11,7 @@ import { formatUtc, countdown, ipfsUrl } from '../../place/format';
 import { useHubStream } from '../hooks.js';
 import { REWARDS_DISTRIBUTOR_ABI } from '../abi.js';
 import { usd } from '../format.js';
-import { launchTokenPath } from './parts.jsx';
+import { launchTokenPath, Advanced, ReadyNote } from './parts.jsx';
 import { PairLogos, PhaseBadge, CopyId, amountText, conditionText, SOURCE_BADGE } from './vaults.jsx';
 
 const TABLE_STATUS = {
@@ -36,6 +37,7 @@ function YourReward({ s, mine, account }) {
       <div className="pl-launch-your-reward">
         <span className="pl-launch-muted pl-launch-small">Connect wallet to see what you can claim.</span>
         <ConnectButton size="sm" />
+        {s.status === 'live' && <ReadyNote />}
       </div>
     );
   }
@@ -71,6 +73,7 @@ function YourReward({ s, mine, account }) {
         {claimable === 0n ? 'Nothing to claim yet' : 'Claim'}
       </TxButton>
       <TxResult tx={tx} success="Rewards claimed" />
+      {s.status === 'live' && <ReadyNote />}
     </div>
   );
 }
@@ -82,42 +85,46 @@ function Actions({ actions, s, account }) {
   const reclaim = actions.reclaim;
   if (!actions.close && !reclaim) return null;
   return (
-    <Card className="pl-place-stack">
-      <span className="pl-launch-section-title">Keep it running</span>
-      {actions.close && (
-        <div className="pl-launch-your-reward">
-          <span className="pl-launch-muted pl-launch-small">
-            {actions.close.days === 1 ? 'Yesterday is over but not closed yet.' : `${actions.close.days} finished days are not closed yet.`} Anyone can close them; Place does it once a day.
-          </span>
-          {account ? (
-            <TxButton tx={closeTx} size="sm" variant="secondary" busyLabel="Closing on Base..." onClick={() => closeTx.send({ label: 'Close the finished days', to: actions.close.tx.to, data: actions.close.tx.data, value: 0n })}>
-              Close the day
-            </TxButton>
-          ) : (
-            <ConnectButton size="sm" />
-          )}
-        </div>
-      )}
-      <TxResult tx={closeTx} success="Days closed" />
+    <>
       {reclaim && (
-        <div className="pl-launch-your-reward">
-          <span className="pl-launch-muted pl-launch-small">
-            {reclaim.ready
-              ? `${amountText(reclaim.amount, r.decimals)} ${r.symbol} were never shared. Anyone can send them back to the funder.`
-              : `What is not shared goes back to the funder from ${formatUtc(reclaim.at)}.`}
-          </span>
-          {reclaim.ready &&
-            (account ? (
-              <TxButton tx={reclaimTx} size="sm" variant="secondary" busyLabel="Returning on Base..." onClick={() => reclaimTx.send({ label: 'Return the unallocated budget', to: reclaim.tx.to, data: reclaim.tx.data, value: 0n })}>
-                Return to funder
+        <Card className="pl-place-stack">
+          <span className="pl-launch-section-title">Unshared budget</span>
+          <div className="pl-launch-your-reward">
+            <span className="pl-launch-muted pl-launch-small">
+              {reclaim.ready
+                ? `${amountText(reclaim.amount, r.decimals)} ${r.symbol} were never shared. Anyone can send them back to the funder.`
+                : `What is not shared goes back to the funder from ${formatUtc(reclaim.at)}.`}
+            </span>
+            {reclaim.ready &&
+              (account ? (
+                <TxButton tx={reclaimTx} size="sm" variant="secondary" busyLabel="Returning on Base..." onClick={() => reclaimTx.send({ label: 'Return the unallocated budget', to: reclaim.tx.to, data: reclaim.tx.data, value: 0n })}>
+                  Return to funder
+                </TxButton>
+              ) : (
+                <ConnectButton size="sm" />
+              ))}
+          </div>
+          <TxResult tx={reclaimTx} success="Returned to the funder" />
+        </Card>
+      )}
+      {actions.close && (
+        <Advanced note="Place closes every finished UTC day on its own within minutes of 00:00 UTC and publishes its table. Close it by hand only if a day stays open for long; anyone can, and it pays nobody.">
+          <div className="pl-launch-your-reward">
+            <span className="pl-launch-muted pl-launch-small">
+              {actions.close.days === 1 ? 'Yesterday is over but not closed yet.' : `${actions.close.days} finished days are not closed yet.`}
+            </span>
+            {account ? (
+              <TxButton tx={closeTx} size="sm" variant="secondary" busyLabel="Closing on Base..." onClick={() => closeTx.send({ label: 'Close the finished days', to: actions.close.tx.to, data: actions.close.tx.data, value: 0n })}>
+                Close the day
               </TxButton>
             ) : (
               <ConnectButton size="sm" />
-            ))}
-        </div>
+            )}
+          </div>
+          <TxResult tx={closeTx} success="Days closed" />
+        </Advanced>
       )}
-      <TxResult tx={reclaimTx} success="Returned to the funder" />
-    </Card>
+    </>
   );
 }
 

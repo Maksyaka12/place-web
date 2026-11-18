@@ -1,5 +1,7 @@
 // Campaign rewards, under Rewards in the profile: what a wallet can claim across every Place campaign and hub,
 // Claim all in one transaction per hub (the ready claimMany calls from GET claims), and the history.
+// `only` ('holders' | 'nft') keeps one kind of campaign (Claim all then stays off when other kinds are due too);
+// `quiet` renders nothing when there is nothing to claim and no history.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Gift, History, ExternalLink, Wallet } from 'lucide-react';
@@ -9,6 +11,7 @@ import { PLACE_HUB_ABI } from '../../../../place/abi';
 import { explorerTx } from '../../../../place/chain';
 import { formatToken, formatUtc, countdown, assetLabel, shortAddress } from '../../../../place/format';
 import { TxButton, TxResult, ConnectButton, AddressLookup, QueryError, Skeleton, campaignTitle, campaignPath } from './parts';
+import { campaignType } from '../../../../launch/profileRewards.js';
 
 /** Sums per reward token: [{ key, raw, meta }]. */
 function totals(list) {
@@ -93,16 +96,20 @@ function HistoryRow({ c, kind }) {
   );
 }
 
-export default function RewardsPage() {
+export default function RewardsPage({ only = null, quiet = false }) {
   const { address: own } = usePlaceAccount();
   const [lookup, setLookup] = useState(null);
   const account = lookup || own;
   const q = useClaims(account);
   const tx = usePlaceTx();
   const data = q.data;
-  const claimable = data?.claimable || [];
+  const ofType = (c) => !only || campaignType(c) === only;
+  const allClaimable = data?.claimable || [];
+  const claimable = allClaimable.filter(ofType);
   const sums = useMemo(() => totals(claimable), [claimable]);
-  const history = [...(data?.claimed || []).map((c) => ({ c, kind: 'claimed' })), ...(data?.expired || []).map((c) => ({ c, kind: 'expired' }))];
+  const history = [...(data?.claimed || []).map((c) => ({ c, kind: 'claimed' })), ...(data?.expired || []).map((c) => ({ c, kind: 'expired' }))].filter(({ c }) => ofType(c));
+  // Claim all claims every kind at once, so a filtered list offers it only when nothing else is due.
+  const claimAllOk = claimable.length === allClaimable.length;
 
   // Anyone may send claimMany for any account (the reward always goes to the account), so a connected
   // wallet can also claim for an address it is only looking at.
@@ -116,6 +123,8 @@ export default function RewardsPage() {
         label: data.transactions.length > 1 ? `Claim all (${i + 1} of ${data.transactions.length})` : 'Claim all',
       }))
     );
+
+  if (quiet && (!account || (q.isSuccess && !claimable.length && !history.length))) return null;
 
   return (
     <div className="pl-launch-console-section pl-place-rewards">
@@ -154,23 +163,25 @@ export default function RewardsPage() {
             <QueryError error={q.error} retry={q.refetch} />
           ) : (
             <>
-              <section className="pl-place-section pl-place-claimable">
+              <div className="pl-place-section pl-place-claimable">
                 <SectionTitle title="Ready to claim" count={claimable.length} />
                 {claimable.length ? (
                   <>
-                    <Card className="pl-place-claim-all">
-                      <div>
-                        <div className="tile-label">Total</div>
-                        <div className="pl-place-claim-all-total">{sums.map((s) => formatToken(s.raw, s.meta)).join(' + ')}</div>
-                      </div>
-                      {canSend ? (
-                        <TxButton tx={tx} size="lg" onClick={claimAll} disabled={tx.status === 'success'} busyLabel="Claiming on Base...">
-                          {tx.status === 'success' ? 'All claimed' : `Claim all (${claimable.length})`}
-                        </TxButton>
-                      ) : (
-                        <ConnectButton size="lg">Connect wallet to claim</ConnectButton>
-                      )}
-                    </Card>
+                    {claimAllOk && (
+                      <Card className="pl-place-claim-all">
+                        <div>
+                          <div className="tile-label">Total</div>
+                          <div className="pl-place-claim-all-total">{sums.map((s) => formatToken(s.raw, s.meta)).join(' + ')}</div>
+                        </div>
+                        {canSend ? (
+                          <TxButton tx={tx} size="lg" onClick={claimAll} disabled={tx.status === 'success'} busyLabel="Claiming on Base...">
+                            {tx.status === 'success' ? 'All claimed' : `Claim all (${claimable.length})`}
+                          </TxButton>
+                        ) : (
+                          <ConnectButton size="lg">Connect wallet to claim</ConnectButton>
+                        )}
+                      </Card>
+                    )}
                     {tx.status !== 'idle' && !tx.busy && (
                       <div className="pl-place-section">
                         <TxResult tx={tx} success="Everything is claimed" />
@@ -196,9 +207,9 @@ export default function RewardsPage() {
                     />
                   </Card>
                 )}
-              </section>
+              </div>
 
-              <section className="pl-place-section">
+              <div className="pl-place-section">
                 <SectionTitle title="History" count={history.length} />
                 {history.length ? (
                   <div className="pl-place-rows">
@@ -211,7 +222,7 @@ export default function RewardsPage() {
                     <EmptyState icon={<History size={28} />} title="No history yet" description="Claimed and expired rewards are listed here" />
                   </Card>
                 )}
-              </section>
+              </div>
             </>
           )}
         </>

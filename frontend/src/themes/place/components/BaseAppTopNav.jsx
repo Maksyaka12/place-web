@@ -54,7 +54,7 @@ const MORE_LINKS = [
   { label: 'Staking', to: '/hub?type=staking', Icon: Coins },
   { label: 'Create vault / campaign', to: '/create', Icon: PlusCircle },
   { label: 'Launch NFT', to: '/launch/nft', Icon: Sparkles },
-  { label: 'My campaigns', to: '/profile/campaigns', Icon: LayoutDashboard },
+  { label: 'My launches', to: '/profile/launches', Icon: LayoutDashboard },
   { label: 'Register token', to: '/projects/register', Icon: BadgeCheck },
   { label: 'Wallet', to: '/wallet', Icon: Wallet },
   { label: 'Swap', to: '/swap', Icon: ArrowLeftRight },

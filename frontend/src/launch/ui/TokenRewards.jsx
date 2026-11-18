@@ -1,6 +1,7 @@
 // Token page tabs about rewards: Rewards (the daily holder and trader streams of an Economy token, what this
-// wallet can claim, the last days), Staking / Campaigns (official programs from the economy or the community pool,
-// and programs from anyone else) and Updates (the creator's on-chain announcements).
+// wallet can claim, the last days), Staking (the token's staking vaults as hub cards, each opening its vault page),
+// Campaigns (official reward streams and campaigns from the economy, the community pool or the creator, then those
+// from anyone else) and Updates (the creator's on-chain announcements).
 import { Link } from 'react-router-dom';
 import { Gift, BarChart3, Coins, ArrowUpRight, ExternalLink, Megaphone, Clock } from 'lucide-react';
 import { Badge, Button, EmptyState, Tile } from '../../themes/place/components/ui';
@@ -13,6 +14,8 @@ import { REWARDS_DISTRIBUTOR_ABI } from '../abi.js';
 import { STREAM_LABEL } from '../economy.js';
 import { compact } from '../format.js';
 import { units, quoteText } from './TokenEconomy.jsx';
+import { HubCard, hubItems } from './HubPage.jsx';
+import { duration } from './vaults.jsx';
 
 const STREAM_ICON = { holders: Gift, traders: BarChart3 };
 const STATUS = { live: 'Live', upcoming: 'Upcoming', ended: 'Ended' };
@@ -232,7 +235,7 @@ function StakingRow({ p }) {
       </span>
       <span className="pl-launch-hub-row-right">
         <span className="mono pl-launch-muted">
-          {p.epochCount} × {Math.round(p.epochDuration / 3600)}h
+          {p.epochCount} × {duration(p.epochDuration)}
         </span>
         <StatusBadge status={p.status === 'live' ? 'Live' : p.status === 'ended' ? 'Ended' : 'Upcoming'} />
       </span>
@@ -240,37 +243,81 @@ function StakingRow({ p }) {
   );
 }
 
+/** Who counts as official for this token: its fee vault, Community Pool and creators. */
+const officialSet = (data) => new Set([data.token.vault, data.communityVault, data.token.creator, data.token.originalCreator].filter(Boolean));
+
+/** Staking vaults of this token that have not ended: the number on the Staking tab. */
+export const activeStaking = (data) => (data.staking || []).filter((p) => p.status !== 'ended').length;
+
+export function StakingTab({ data }) {
+  const t = data.token;
+  const staking = data.staking || [];
+  const vaults = officialSet(data);
+  // Hub cards (each opens its vault page); a vault funded by the creator is marked as theirs.
+  const items = hubItems([], staking).map((it, i) => (it.source === 'community' && vaults.has(staking[i].creator) ? { ...it, source: 'creator' } : it));
+  const active = items.filter((it) => it.status !== 'ended');
+  const ended = staking.filter((p) => p.status === 'ended');
+  return (
+    <div className="pl-launch-tab-body">
+      <p className="pl-launch-section-desc">
+        Stake {t.symbol} for a share of a fixed reward every epoch. Claiming what you earned and withdrawing your stake are separate. Open a vault to stake.
+      </p>
+      {active.length ? (
+        <div className="pl-vaults-grid pl-launch-staking-grid">
+          {active.map((it) => (
+            <HubCard key={it.key} it={it} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={<Coins size={28} />} title="No staking open right now" description={`Anyone can fund a staking vault for ${t.symbol}: stakers share a fixed reward every epoch.`} />
+      )}
+      {ended.length > 0 && (
+        <>
+          <span className="pl-launch-field-label">Ended</span>
+          <div className="pl-launch-hub-list">
+            {ended.map((p) => (
+              <StakingRow key={p.id} p={p} />
+            ))}
+          </div>
+        </>
+      )}
+      <div className="pl-launch-tab-actions">
+        <Button as={Link} to={`/create?type=staking&token=${t.address}`}>Create staking vault</Button>
+        <Button as={Link} to={`/hub?type=staking&token=${t.address}`}>
+          Open in Rewards hub
+          <ArrowUpRight size={15} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function CampaignsTab({ data, econ }) {
   const t = data.token;
   const streams = data.rewards || [];
   const campaigns = data.campaigns || [];
-  const staking = data.staking || [];
-  const vaults = new Set([t.vault, data.communityVault, t.creator, t.originalCreator].filter(Boolean));
-  const officialStaking = (p) => p.fromLaunchVault || vaults.has(p.creator);
   const official = [
     ...streams.filter((s) => s.official).map((s) => <StreamRow key={s.id} s={s} />),
     ...campaigns.filter((c) => c.section !== 'community').map((c) => <CampaignRow key={`${c.hub}-${c.id}`} c={c} t={t} />),
-    ...staking.filter(officialStaking).map((p) => <StakingRow key={p.id} p={p} />),
   ];
   const community = [
     ...streams.filter((s) => !s.official).map((s) => <StreamRow key={s.id} s={s} />),
     ...campaigns.filter((c) => c.section === 'community').map((c) => <CampaignRow key={`${c.hub}-${c.id}`} c={c} t={t} />),
-    ...staking.filter((p) => !officialStaking(p)).map((p) => <StakingRow key={p.id} p={p} />),
   ];
   const pool = econ?.shares.community > 0;
   return (
     <div className="pl-launch-tab-body">
       <p className="pl-launch-section-desc">
         {pool
-          ? `Part of every trade fills a community ${econ.generation === 2 ? 'fund' : 'pool'}. The creator turns it into reward campaigns and staking programs for this token, never into their own wallet. Anyone can also start one.`
-          : 'Reward campaigns and staking programs for this token. Anyone can start one in the Rewards hub.'}
+          ? `Part of every trade fills a community ${econ.generation === 2 ? 'fund' : 'pool'}. The creator turns it into reward campaigns for this token, never into their own wallet. Anyone can also start one.`
+          : 'Holder, trader and NFT holder rewards for this token. Anyone can start one in the Rewards hub.'}
       </p>
       <span className="pl-launch-field-label">Official</span>
       {official.length ? <div className="pl-launch-hub-list">{official}</div> : <p className="pl-launch-muted pl-launch-small">Nothing from the token&apos;s economy or its creator yet.</p>}
       <span className="pl-launch-field-label">From the community</span>
-      {community.length ? <div className="pl-launch-hub-list">{community}</div> : <p className="pl-launch-muted pl-launch-small">No campaigns or staking from other wallets yet.</p>}
+      {community.length ? <div className="pl-launch-hub-list">{community}</div> : <p className="pl-launch-muted pl-launch-small">No campaigns from other wallets yet.</p>}
       <div className="pl-launch-tab-actions">
-        <Button as={Link} to={`/create?token=${t.address}`}>Create vault / campaign</Button>
+        <Button as={Link} to={`/create?token=${t.address}`}>Create campaign</Button>
         <Button as={Link} to={`/hub?token=${t.address}`}>
           Open in Rewards hub
           <ArrowUpRight size={15} />

@@ -1,6 +1,7 @@
 // Campaigns in the profile: the creator's dashboard — every campaign with its status and claims, and the
 // actions the hub allows at that moment: cancel, extend the claim window, take back an unpublished pool,
-// close; plus the NFT collections deployed through Place.
+// close; plus the NFT collections deployed through Place. Profile → Launches embeds it under the tokens with
+// `embedded`: no collections (they have their own NFT launches tab) and nothing at all while there are no campaigns.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutDashboard, Sparkles, Wallet, EyeOff } from 'lucide-react';
@@ -133,12 +134,12 @@ function CampaignRow({ c, own }) {
   );
 }
 
-export default function MyCampaignsPage() {
+export default function MyCampaignsPage({ embedded = false }) {
   const { address: own } = usePlaceAccount();
   const [lookup, setLookup] = useState(null);
   const creator = lookup || own;
   const campaigns = useCampaigns({ creator, status: 'all', includeHidden: 1, limit: 100 }, { enabled: Boolean(creator) });
-  const collections = useCollections({ creator, limit: 100 }, { enabled: Boolean(creator) });
+  const collections = useCollections({ creator, limit: 100 }, { enabled: Boolean(creator && !embedded) });
   const list = campaigns.data?.campaigns || [];
   const cols = collections.data?.collections || [];
   const isOwn = Boolean(own) && creator === own;
@@ -148,12 +149,14 @@ export default function MyCampaignsPage() {
     </Button>
   );
 
+  if (embedded && (!creator || (campaigns.isSuccess && !list.length && !lookup))) return null;
+
   return (
     <div className="pl-launch-console-section pl-place-mine">
       <div className="pl-launch-console-head row">
         <div>
-          <h2 className="pl-launch-console-title">Campaigns</h2>
-          <p className="pl-launch-section-desc">Campaigns and NFT collections you created, with what you can do with them right now</p>
+          <h2 className="pl-launch-console-title">{embedded ? 'Snapshot campaigns' : 'Campaigns'}</h2>
+          <p className="pl-launch-section-desc">{embedded ? 'One-off campaigns you created, with what you can do with them right now' : 'Campaigns and NFT collections you created, with what you can do with them right now'}</p>
         </div>
         {own ? create : null}
       </div>
@@ -174,7 +177,7 @@ export default function MyCampaignsPage() {
               </Button>
             </div>
           )}
-          <section className="pl-place-section">
+          <div className="pl-place-section">
             <SectionTitle title="Campaigns" count={campaigns.data ? list.length : undefined} />
             {campaigns.isLoading ? (
               <Skeleton height={160} />
@@ -191,9 +194,9 @@ export default function MyCampaignsPage() {
                 <EmptyState icon={<LayoutDashboard size={28} />} title="No campaigns yet" description="Reward the holders of any token or NFT, funded in one transaction" action={create} />
               </Card>
             )}
-          </section>
+          </div>
 
-          <section className="pl-place-section">
+          {!embedded && <div className="pl-place-section">
             <SectionTitle title="NFT collections" count={collections.data ? cols.length : undefined} />
             {collections.isLoading ? (
               <Skeleton height={80} />
@@ -227,7 +230,7 @@ export default function MyCampaignsPage() {
                 />
               </Card>
             )}
-          </section>
+          </div>}
         </>
       )}
     </div>

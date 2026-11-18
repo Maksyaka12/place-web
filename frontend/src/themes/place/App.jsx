@@ -53,7 +53,7 @@ function LegacyProfileRedirect() {
   return <Navigate to={`${pathname.replace(/^\/launch\/profile/, '/profile')}${search}`} replace />;
 }
 
-// Former Rewards hub tabs: My rewards and My campaigns now live in the profile.
+// Former Rewards hub tabs: My rewards and My campaigns now live in the profile (Rewards, Launches).
 function MovedTo({ to }) {
   const { search } = useLocation();
   return <Navigate to={`${to}${search}`} replace />;
@@ -74,7 +74,7 @@ function DomainRouter() {
       <Route path="/create/:kind" element={<Navigate to="/create" replace />} />
       <Route path="/launch/profile/*" element={<LegacyProfileRedirect />} />
       <Route path="/rewards" element={<MovedTo to="/profile/rewards" />} />
-      <Route path="/my" element={<MovedTo to="/profile/campaigns" />} />
+      <Route path="/my" element={<MovedTo to="/profile/launches" />} />
       <Route path="/docs" element={docs} />
       <Route path="/docs/:slug" element={docs} />
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,8 @@
 // Collection page (/collection/:address): an NFT collection of the Place NFT launchpad. The gallery (or the edition
 // image), the mint (progress, price in ETH and in the pair token, quantity, what to pay with), the economy ring, the
 // 30-day holders pool, the wallet's NFTs with Claim, the calls anyone can make (share royalties after the sell-out,
-// burn waiting ETH, pay out), holders, mints and the economy log. Every call goes through usePlaceTx (Builder Code).
+// burn waiting ETH, pay out: Place's keeper runs them, so they sit folded under Advanced), holders, mints and the
+// economy log. Every call goes through usePlaceTx (Builder Code).
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +19,7 @@ import { NFT_COLLECTION_ABI } from '../nftAbi.js';
 import { ERC20_ABI } from '../swap.js';
 import { MINT_STATUS, POOL_DAYS, poolNumbers } from '../nft.js';
 import { compact } from '../format.js';
-import { TokenLogo } from './parts.jsx';
+import { TokenLogo, Advanced, ReadyNote } from './parts.jsx';
 import { NftImage, NftEconomy, NftNotLive, ethText } from './CollectionParts.jsx';
 
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -236,11 +237,15 @@ function YourNfts({ c, account, you, decimals, symbol }) {
         <Gift size={15} /> Claim
       </TxButton>
       <TxResult tx={tx} success="Claimed" />
+      {ids.length > 0 && <ReadyNote />}
     </Card>
   );
 }
 
-/** Calls anyone can make: share royalties (after the sell-out, or when ETH is waiting), burn waiting ETH, pay out. */
+/**
+ * Calls anyone can make: share royalties (after the sell-out, or when ETH is waiting), burn waiting ETH, pay out.
+ * Place's keeper makes them on its own, so they are a folded fallback.
+ */
 function KeepItRunning({ c, live }) {
   const tx = usePlaceTx();
   if (!live) return null;
@@ -252,9 +257,10 @@ function KeepItRunning({ c, live }) {
   if (!showProcess && buyback === 0n && owed === 0n) return null;
   const call = (label, functionName, args) => tx.send({ label, to: c.address, abi: NFT_COLLECTION_ABI, functionName, args });
   return (
-    <Card className="pl-place-stack">
-      <span className="pl-launch-section-title">Keep it running</span>
-      <p className="pl-launch-muted pl-launch-small">Anyone can make these calls; nobody gets the money but the people it belongs to.</p>
+    <Advanced
+      title="Advanced: keep it running"
+      note="Place runs these on its own every few minutes: sharing royalties, buying back and burning, paying out. Use them by hand only if something waits for long. Anyone can make these calls; nobody gets the money but the people it belongs to."
+    >
       <div className="pl-place-rows">
         {showProcess && (
           <div className="pl-place-row">
@@ -297,7 +303,7 @@ function KeepItRunning({ c, live }) {
         )}
       </div>
       <TxResult tx={tx} success="Done" />
-    </Card>
+    </Advanced>
   );
 }
 

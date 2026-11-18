@@ -3645,3 +3645,93 @@
     text-align: left;
   }
 }
+
+/* Token page, Staking tab: vault cards in the narrower main column */
+.pl-launch-staking-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 640px) {
+  .pl-launch-staking-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Advanced: manual fallbacks of what Place runs automatically, folded away */
+.pl-launch-advanced {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.pl-launch-advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--r-lg);
+  transition: color 0.15s ease;
+}
+.pl-launch-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.pl-launch-advanced > summary:hover {
+  color: var(--text);
+}
+.pl-launch-advanced > summary .pl-launch-advanced-chevron {
+  margin-left: auto;
+  transition: transform 0.15s ease;
+}
+.pl-launch-advanced[open] > summary .pl-launch-advanced-chevron {
+  transform: rotate(180deg);
+}
+.pl-launch-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+.pl-launch-ready-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.pl-launch-ready-note svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Profile → Rewards: staking rows with Claim and Withdraw; NFT launches: the paired token */
+.pl-profile-stake-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.pl-profile-pair {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.pl-profile-pair .pl-launch-logo {
+  flex-shrink: 0;
+}
+.pl-launch-console-section .pl-rewards-types {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .pl-profile-stake-row .pl-profile-stake-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: stretch;
+  }
+  .pl-profile-stake-actions > * {
+    flex: 1 1 0;
+  }
+  .pl-profile-pair {
+    justify-content: flex-start;
+  }
+}

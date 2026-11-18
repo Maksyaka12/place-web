@@ -1,14 +1,15 @@
-// Profile (/profile/:section): Rewards (daily holder and trader rewards over every token, Claim / Claim all, then the
-// one-off payouts of hub campaigns), Campaigns (hub campaigns and NFT collections this wallet created),
-// Launches (tokens this wallet launched), Fees and Profile settings (signed by the wallet, stored by the API).
+// Profile (/profile/:section): Launches (tokens this wallet launched, then the snapshot campaigns it created),
+// NFT launches (its collections and the token each is paired with), Fees, Rewards (staking it takes part in and
+// what it can claim, with the hub's filters: Staking / Holders / Traders / NFT holders) and Profile settings
+// (signed by the wallet, stored by the API). Old sections redirect: campaigns → launches, nfts → nft-launches.
 // Fees per release: 0.3.0 → VaultPanelV3 (creator revenue, Community Pool campaigns, automatic campaign);
 // 0.2.0 → VaultPanel (fees, daily burn, community fund, raising the shares); 0.1.0 → FeeRow (buyback, rewards pool).
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, Navigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallets } from '@privy-io/react-auth';
 import { toHex, isAddress } from 'viem';
-import { ArrowLeft, LayoutDashboard, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock, Image as ImageIcon } from 'lucide-react';
 import { Button, Card, Badge, EmptyState, Alert } from '../../themes/place/components/ui';
 import { TxButton, TxResult, ConnectButton, CopyAddress, QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx, useNow } from '../../place/hooks';
@@ -24,20 +25,19 @@ import { TokenLogo, launchTokenPath, launchNewPath, consolePath } from './parts.
 import { VaultPanel } from './VaultPanel.jsx';
 import { VaultPanelV3 } from './VaultPanelV3.jsx';
 import { ProfileRewards } from './ProfileRewards.jsx';
-import { ProfileNfts, NftRewards } from './ProfileNfts.jsx';
-import CampaignRewards from '../../themes/place/pages/place/RewardsPage.jsx';
+import { ProfileNfts } from './ProfileNfts.jsx';
 import MyCampaigns from '../../themes/place/pages/place/MyCampaignsPage.jsx';
+import { LEGACY_SECTIONS } from '../profileRewards.js';
 import { money } from './TokenCard.jsx';
 import { age } from '../format.js';
 import { tokenEconomy } from '../economy.js';
 import { useLaunchLive, useLiveTokens } from '../live.js';
 
 const SECTIONS = [
-  { id: 'rewards', label: 'Rewards', Icon: Gift },
-  { id: 'campaigns', label: 'Campaigns', Icon: LayoutDashboard },
-  { id: 'nfts', label: 'NFTs', Icon: ImageIcon },
   { id: 'launches', label: 'Launches', Icon: Rocket },
+  { id: 'nft-launches', label: 'NFT launches', Icon: ImageIcon },
   { id: 'fees', label: 'Fees', Icon: Coins },
+  { id: 'rewards', label: 'Rewards', Icon: Gift },
   { id: 'settings', label: 'Profile settings', Icon: UserRound },
 ];
 
@@ -525,6 +525,8 @@ export default function CreatorConsole() {
   const profileQ = useProfile(address);
   const profile = profileQ.isSuccess ? profileQ.data?.profile || null : undefined;
 
+  if (LEGACY_SECTIONS[section]) return <Navigate to={`${consolePath(LEGACY_SECTIONS[section])}${window.location.search}`} replace />;
+
   if (!address) {
     return (
       <div className="pl-launch">
@@ -582,17 +584,14 @@ export default function CreatorConsole() {
           ) : active === 'fees' ? (
             <Fees address={address} />
           ) : active === 'rewards' ? (
-            <>
-              <ProfileRewards address={address} />
-              <NftRewards address={address} />
-              <CampaignRewards />
-            </>
-          ) : active === 'campaigns' ? (
-            <MyCampaigns />
-          ) : active === 'nfts' ? (
+            <ProfileRewards address={address} />
+          ) : active === 'nft-launches' ? (
             <ProfileNfts address={address} />
           ) : (
-            <Launches address={address} now={now} />
+            <>
+              <Launches address={address} now={now} />
+              <MyCampaigns embedded />
+            </>
           )}
         </div>
       </div>

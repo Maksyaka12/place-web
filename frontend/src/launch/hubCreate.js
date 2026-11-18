@@ -6,7 +6,7 @@
 //             (collections made by the Place NFT factory; the daily table counts ownerOf at the end of the day)
 // Paid from a wallet (approve + create) or, for the creator of a Place token, from its Community Pool
 // (GET launch/fund-quote returns the fundCampaign / fundStaking call; NFT rewards cannot come from the pool).
-import { getAddress, isAddress } from 'viem';
+import { formatUnits, getAddress, isAddress } from 'viem';
 import { parseAmount } from '../place/format.js';
 import { REWARDS_DISTRIBUTOR_ABI, PLACE_STAKING_ABI } from './abi.js';
 
@@ -157,4 +157,60 @@ export function planHubCreate(f, ctx) {
         };
   }
   return { errors, perEpoch, total, fee, pay, value, rewardToken, spender, call, startEpoch, count, epochDays };
+}
+
+// ─────────────────────────────── form helpers (preview and pickers) ───────────────────────────────
+
+/**
+ * The schedule the form previews: start and end at 00:00 UTC, the number of epochs and their length in days.
+ * Holders, traders and NFT holders run in one-day epochs; staking epochs last `epochDays`. Null until the fields
+ * make sense.
+ */
+export function createSchedule({ type, startDay, days, epochDays }) {
+  const start = utcDay(startDay);
+  const count = int(days);
+  const length = type === 'staking' ? int(epochDays || 1) : 1;
+  if (start == null || !(count >= 1 && count <= MAX_DAYS) || !(length >= 1)) return null;
+  const end = start + count * length;
+  return { startEpoch: start, endEpoch: end, epochs: count, epochDays: length, startsAt: start * EPOCH * 1000, endsAt: end * EPOCH * 1000, totalDays: count * length };
+}
+
+/** "Reward per epoch" of a staking vault as the pool the form sends: per epoch × epochs, in plain units ('' when unknown). */
+export function poolFromPerEpoch(perEpoch, epochs, decimals) {
+  const n = int(epochs);
+  if (decimals == null || !(n >= 1)) return '';
+  const per = parseAmount(perEpoch, decimals);
+  if (!per) return '';
+  return formatUnits(per * BigInt(n), decimals);
+}
+
+/** Picker tab of a pair asset: ETH, USDC and other main assets under Majors, tokenized stocks under Stocks. */
+const pairTab = (p) => (p.category === 'stocks' ? 'stocks' : 'majors');
+
+/**
+ * Reward currencies a wallet can pay in, in the shape of the reward token picker: ETH, every launch pair asset and
+ * the token itself (not for NFT collections). Any other ERC-20 is added by pasting its address in the picker.
+ */
+export function walletRewardOptions({ pairs = [], token = null, asset = null }) {
+  const list = [{ address: 'eth', symbol: 'ETH', name: 'Ether', decimals: 18, source: 'pair', category: 'majors' }];
+  for (const p of pairs) {
+    if (!p?.symbol || p.address === 'eth' || list.some((x) => x.address === p.address)) continue;
+    list.push({ address: p.address, symbol: p.symbol, name: p.name, decimals: p.decimals, source: 'pair', category: pairTab(p) });
+  }
+  const self = token && asset && !asset.isNft ? String(token).toLowerCase() : null;
+  if (self && !list.some((x) => x.address === self)) {
+    list.push({ address: self, symbol: asset.symbol, name: asset.name, decimals: asset.decimals, source: 'token', category: 'crypto', contractURI: asset.place?.contractURI ?? null, placeLaunch: Boolean(asset.place) });
+  }
+  return list;
+}
+
+/**
+ * Reward currencies the Community Pool can pay in (`launch/reward-tokens` of the token's pair): the pair asset with
+ * no swap, the token itself bought in its own pool, and every listed route. 'self' becomes the token's address.
+ */
+export function poolRewardOptions(tokens = [], token = null, asset = null) {
+  const self = token ? String(token).toLowerCase() : null;
+  return tokens
+    .map((t) => (t.source === 'self' ? (self ? { ...t, address: self, symbol: asset?.symbol ?? null, name: asset?.name ?? null, decimals: asset?.decimals ?? 18, source: 'token', category: 'crypto', placeLaunch: true } : null) : t))
+    .filter(Boolean);
 }

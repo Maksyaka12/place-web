@@ -17,7 +17,7 @@ import { TokenLogo, KindBadge, NewBadge, Change, launchPath, consolePath } from 
 import { tokenEconomy } from '../economy.js';
 import { money } from './TokenCard.jsx';
 import { EconomyTab, BurnTab, DisclosuresTab, units } from './TokenEconomy.jsx';
-import { RewardsTab, CampaignsTab, UpdatesTab } from './TokenRewards.jsx';
+import { RewardsTab, StakingTab, CampaignsTab, UpdatesTab, activeStaking } from './TokenRewards.jsx';
 import { useLaunchLive, useLiveToken, useLiveTrades, useLiveCandles, freshTrades, liveTradesOf } from '../live.js';
 import { usd, price as priceText, compact, age } from '../format.js';
 
@@ -167,7 +167,8 @@ function TokenTabs({ data, token, econ, now }) {
     { id: 'updates', label: 'Updates', count: data.announcements?.length || null },
     { id: 'burn', label: 'Burn' },
     v3 && { id: 'rewards', label: 'Rewards' },
-    { id: 'campaigns', label: 'Staking / Campaigns' },
+    { id: 'staking', label: 'Staking', count: activeStaking(data) || null },
+    { id: 'campaigns', label: 'Campaigns' },
     { id: 'disclosures', label: 'Disclosures' },
   ].filter(Boolean);
   const active = tabs.some((x) => x.id === params.get('tab')) ? params.get('tab') : 'transactions';
@@ -213,6 +214,7 @@ function TokenTabs({ data, token, econ, now }) {
         {active === 'updates' && <UpdatesTab data={data} now={now} />}
         {active === 'burn' && <BurnTab data={data} econ={econ} now={now} />}
         {active === 'rewards' && <RewardsTab data={data} econ={econ} now={now} />}
+        {active === 'staking' && <StakingTab data={data} />}
         {active === 'campaigns' && <CampaignsTab data={data} econ={econ} />}
         {active === 'disclosures' && <DisclosuresTab data={data} econ={econ} />}
       </div>

@@ -1,6 +1,7 @@
 // Building blocks shared by the Place Launch pages: token logo, badges, price change, ages. Made from the
 // design-system components (src/themes/place/components/ui) and launch.css.
 import { useState } from 'react';
+import { ChevronDown, Clock, Settings2 } from 'lucide-react';
 import { Badge } from '../../themes/place/components/ui';
 import { useTokenMeta } from '../hooks.js';
 import { imageUrl } from '../meta.js';
@@ -99,5 +100,32 @@ export function AllocationBar({ shares, labels = {}, legend = true }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** What a reward page shows instead of a manual button: the daily tables are made automatically after 00:00 UTC. */
+export const READY_AFTER = 'Rewards for today will be ready after 00:00 UTC';
+
+export function ReadyNote({ children = READY_AFTER }) {
+  return (
+    <span className="pl-launch-ready-note">
+      <Clock size={13} /> {children}
+    </span>
+  );
+}
+
+/** A folded block for manual fallbacks of what Place runs on its own (closing a day, sharing royalties). */
+export function Advanced({ title = 'Advanced', note, children }) {
+  return (
+    <details className="pl-launch-advanced">
+      <summary>
+        <Settings2 size={14} /> {title}
+        <ChevronDown size={14} className="pl-launch-advanced-chevron" />
+      </summary>
+      <div className="pl-launch-advanced-body">
+        {note && <p className="pl-launch-muted pl-launch-small">{note}</p>}
+        {children}
+      </div>
+    </details>
   );
 }

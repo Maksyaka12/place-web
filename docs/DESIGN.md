@@ -330,7 +330,7 @@ The shell is `src/themes/place/components/BaseAppTopNav.jsx`, styled in `compone
   Pages without a section of their own light up the one they belong to (`sectionOf` in `BaseAppView.jsx`): the
   launch token page and the launch form belong to Dashboard; campaign, staking, Create vault / campaign and Launch NFT
   to Rewards; project pages (`/token/:address`) and Register token to Projects.
-- **Product menu:** the chevron next to the logo opens the other pages (My rewards and My campaigns in the profile,
+- **Product menu:** the chevron next to the logo opens the other pages (My rewards and My launches in the profile,
   Staking, Create vault / campaign, Launch NFT, Register token, Wallet, Swap, Docs; Skill with agents on; Admin for
   Place admins).
 - **Search:** a 40 px pill, focused with `/` from anywhere. An address opens that token, any other text opens the
@@ -340,7 +340,7 @@ The shell is `src/themes/place/components/BaseAppTopNav.jsx`, styled in `compone
   the theme switcher (desktop), and the address pill (Base chain dot, short address, network name on desktop), which
   opens the wallet menu (Wallet, Account, Logout), or Connect wallet. Everything is a 36 px pill.
 - **Rewards** is one list (All rewards) with no row of its own; creating starts from Create vault / campaign and Launch
-  NFT in its head. Old links `/rewards` and `/my` redirect to `/profile/rewards` and `/profile/campaigns`.
+  NFT in its head. Old links `/rewards` and `/my` redirect to `/profile/rewards` and `/profile/launches`.
 - **Agent features** (Agent Zone, agent wallet, agent Settings, Skill) sit behind one flag, `FEATURES.agents` in
   `src/config/features.js`, and ship in the next upgrade. While it is off: `/agents`, `/settings` and `/skill`
   redirect home, the nav leaves them out, and Wallet, Swap and Account show the main wallet only (no Main / Agent
@@ -415,7 +415,7 @@ the same components and tokens as the hub; only these pieces are its own:
   Protocol revenue; two columns on phones); 4 tiles (Market cap, Liquidity, Volume 24h, Holders); candlestick chart
   (SVG, `--green`/`--red` candles, `--border` grid, accent dashed last price); then one card of tabs, a `.seg.soft`
   in `.pl-launch-tabs-scroll` (scrolls sideways on phones and keeps the open tab in view; the tab is in `?tab=`):
-  Transactions · Holders · Economy · Updates · Burn · Rewards (0.3.0 only) · Staking / Campaigns · Disclosures. The
+  Transactions · Holders · Economy · Updates · Burn · Rewards (0.3.0 only) · Staking · Campaigns · Disclosures. The
   swap card (Buy fills green, Sell red) and About are on the right, under the chart below 1100 px.
 - **Token page tabs** (`TokenEconomy.jsx`, `TokenRewards.jsx`; body `.pl-launch-tab-body`, tiles
   `.pl-launch-tab-tiles` 4/2 columns): **Economy** — tiles for the buy and sell tax (fee for Standard and 0.2.0),
@@ -428,20 +428,32 @@ the same components and tokens as the hub; only these pieces are its own:
   **Rewards** — one `.pl-launch-stream` card per holder / trader stream: a 36 px icon on a 14% tint (holders green,
   traders amber), the rule, status, four tiles (shared, claimed, waiting, next day closes in), "You can claim" with
   Claim (`.pl-launch-your-reward`) and the last days (`.pl-launch-days-grid`, table status as a badge, the IPFS table
-  link); Claim all when more than one stream is due. **Staking / Campaigns** — Official (economy streams, community
-  pool streams, the creator's campaigns and staking) and From the community, as `.pl-launch-hub-row` rows (a stream
-  opens its page in the hub), then Create vault / campaign and Open in Rewards hub (`/hub?token=`).
+  link); Claim all when more than one stream is due. **Staking** (the number of vaults not ended on the tab) — the
+  token's live and upcoming staking vaults as hub cards (`HubCard`, 2 columns, 1 on phones; each opens
+  `/staking?program=`), an empty state when none is open, the ended ones as `.pl-launch-hub-row` rows, then Create
+  staking vault and Open in Rewards hub (`/hub?type=staking&token=`). **Campaigns** — Official (economy streams,
+  community pool streams, the creator's campaigns) and From the community, as `.pl-launch-hub-row` rows (a stream
+  opens its page in the hub), then Create campaign and Open in Rewards hub (`/hub?token=`).
   **Updates** — the creator's on-chain announcements; links only when http(s) or IPFS. **Disclosures** — a 2/1 column
   grid of cards (`.pl-launch-disclosures`, accent icon): locked liquidity, no reserved supply, anti-snipe, fee split,
   where the fee applies, burn, what can change and, with rewards, how the daily tables are made.
 - **Bucket colours** outside the form: wrap in `.pl-econ-palette`. `AllocationBar` (`parts.jsx`) draws the shares as
   one bar with a legend (profile fee cards).
-- **Profile** (`/profile/:section`, `CreatorConsole.jsx`): Rewards (default), Campaigns, Launches, Fees, Profile
-  settings. **Rewards** (`ProfileRewards.jsx`): Claim all in the head (one claimMany per rewards contract), "Ready to
-  claim" tiles per reward token, then rows (`.pl-launch-reward-row`: token logo and stream, amounts right-aligned in
-  mono, Claim); phones put the amounts on their own line. Under it, Campaign rewards (`pages/place/RewardsPage.jsx`):
-  one-off payouts of hub campaigns with Claim all and the history. **Campaigns** (`pages/place/MyCampaignsPage.jsx`):
-  the hub campaigns and NFT collections the wallet created, with Create. **Fees**: 0.3.0 tokens get `VaultPanelV3.jsx` — the allocation
+- **Profile** (`/profile/:section`, `CreatorConsole.jsx`): Launches, NFT launches, Fees, Rewards (the default) and
+  Profile settings. Old sections redirect: `/profile/campaigns` → `/profile/launches`, `/profile/nfts` →
+  `/profile/nft-launches` (`LEGACY_SECTIONS` in `src/launch/profileRewards.js`). **Launches**: token cards of the
+  wallet's launches, then its one-off snapshot campaigns (`pages/place/MyCampaignsPage.jsx` with `embedded`: nothing
+  while there are none). **NFT launches** (`ProfileNfts.jsx`): one `.pl-launch-reward-row` per collection it launched
+  (logo, mint status, Unique / Edition, "Paired with TOKEN" linking to the token page, minted / supply and price), then
+  NFTs you hold and the claim history. **Rewards** (`ProfileRewards.jsx`, logic in `src/launch/profileRewards.js`):
+  Claim all in the head (one claimMany per rewards contract), the hub's type tabs (`.pl-rewards-types`: All · Staking ·
+  Holders · Traders · NFT holders with counts; `?type=`), then groups of `.pl-launch-reward-row` rows: Staking (every
+  vault the wallet is in, always, live first: pair logos, status and the end date in UTC, Earned and Staked in mono,
+  Claim and Withdraw apart, "Unlocks …" while every lot is locked; on phones the two buttons share a full-width row),
+  Holders, Traders and NFT holders (only what can be claimed now: distributor streams with Claim, and for NFT holders
+  also the 30-day pools of collections, `claim(ids)`), then Campaign rewards (`pages/place/RewardsPage.jsx` with
+  `only` and `quiet`: one-off payouts of snapshot campaigns, filtered by kind; hidden when there is nothing).
+  Phones put the amounts on their own line. **Fees**: 0.3.0 tokens get `VaultPanelV3.jsx` — the allocation
   bar and three blocks: Creator revenue (Claim), Community Pool (Create campaign opens `.pl-launch-fund-form`: holder
   rewards, trader rewards or staking, amount, reward token, start, minimum, days, slippage, the quote and the ready
   transaction from `launch/fund-quote`; a 0.3.1 pool adds the NFT holders tab — collection select with the eligible
@@ -472,20 +484,27 @@ the same components and tokens as the hub; only these pieces are its own:
 - **Stream page** (`HubStreamDetail.jsx`): back link "All rewards", the vault head (40 px logos, 28 px title, ID, status,
   source and Place badges), an amber alert when Place does not build tables for the stream, 4 tiles (Per day, Pool,
   Shared so far, Next day closes in or Starts in; 15 px values on phones), the rule with "You can claim" and Claim beside
-  a facts card (token, days in UTC, funded by, reward, contract), "Keep it running" (Close the day when a finished day
-  is not closed; Return to funder 30 days after the last day) and the days table (`.pl-rewards-days-grid`: day, shared,
-  wallets, table status with the IPFS link).
-- **Create vault / campaign** (`/create`, `HubCreatePage.jsx`, logic in `src/launch/hubCreate.js`): the launch-form layout
-  (numbered steps, a sticky summary on the right, under the form below 1180 px). 01 What to reward: four type cards in
-  a 2×2 grid (`.pl-rewards-kinds`, accent icons, one column below 480 px): Staking vault, Holder rewards, Trader rewards,
-  NFT holder rewards. 02 Token / Collection: the address, then a block (`.pl-rewards-asset`) with the name, Token / NFT
-  collection and Launched on Place / Place collection badges, and a My wallet / Community Pool switch
-  (`.pl-rewards-funding`; the pool only for the token's creator, never for NFT rewards). 03 Reward and schedule: reward
-  token, pool amount (from the pool: the amount in its pair asset, and a slippage), days or epochs and epoch length,
-  start day (00:00 UTC), the condition (minimum balance, minimum daily volume in the pair asset, minimum NFTs) or early
-  withdrawal for staking. The summary: per day, Place fee, You pay, Runs and the button; an info alert on how it pays
-  out; for NFT rewards an amber alert linking to Launch NFT. `?type=` and `?token=` fill the form; a created stream or
-  vault opens right away.
+  a facts card (token, days in UTC, funded by, reward, contract); under Claim a live stream says "Rewards for today will
+  be ready after 00:00 UTC" (`ReadyNote`). Then Unshared budget (Return to funder 30 days after the last day), the
+  folded Advanced block with Close the day (Place closes days on its own) and the days table (`.pl-rewards-days-grid`:
+  day, shared, wallets, table status with the IPFS link).
+- **Create vault / campaign** (`/create`, `HubCreatePage.jsx`, logic in `src/launch/hubCreate.js`): one form for the
+  four types, in the launch-form layout (numbered steps, a sticky right column, under the form below 1180 px). On top
+  the type tabs (`.pl-rewards-types` as a radio group: Staking · Holders · Traders · NFT holders) and one sentence on
+  the type. 01 Assets: the token or collection address, a block (`.pl-rewards-asset`) with the name, Token / NFT
+  collection and Launched on Place / Place collection badges, Pay from (My wallet / Community Pool as a
+  `.pl-rewards-choice`; the pool only for the token's creator, never for NFT rewards) and Reward currency: the
+  pair-button that opens `RewardTokenPicker` (Crypto / Stocks / Majors; from a wallet: ETH, the launch pairs, the token
+  itself and any ERC-20 pasted in the search, checked through `launch/hub/asset`; from the pool: `launch/reward-tokens`).
+  02 Schedule: Start (00:00 UTC) and Number of days or epochs; staking adds Epoch duration (1d / 7d / 14d / 30d presets
+  beside a days box), the reward as Pool or Per epoch, and Early withdrawal (Forbidden / With a penalty and its %); from
+  the pool: Spend from the pool and Slippage. A `.pl-rewards-split` block shows per day (pool ÷ days) or per epoch.
+  03 Criteria: minimum balance, minimum daily volume in the pair asset or minimum NFTs; staking says anyone can stake.
+  Number boxes carry their unit (`.pl-launch-prefixed.suffix`). On the right: Preview (`.pl-rewards-preview`: pair
+  logos, "Stake / Hold / Trade X · Earn Y", starts, ends, epochs, per day or epoch, condition, early withdrawal) and
+  Funding summary (paid from, reward budget, Place fee on top with its %, Total, your balance, the button), an info
+  alert on how it pays out and, for NFT rewards, an amber alert linking to Launch NFT. `?type=` and `?token=` fill the
+  form; a created stream or vault opens right away.
 - **Launch NFT** (`/launch/nft`, `LaunchNftPage.jsx`, logic in `src/launch/nft.js`, styles `styles/collections.css`,
   `.pl-collection-*`): the launch-form layout with four steps. 01 Basics: logo, name, symbol, description, Unique or Edition
   (kind cards), supply, max per wallet, then the files: Unique uploads one image per NFT (thumbnails numbered by file
@@ -505,8 +524,9 @@ the same components and tokens as the hub; only these pieces are its own:
   revenue, Burned), then the main column (gallery 4/3/2 columns of NFT images from their metadata or the edition image,
   Economy ring and table, Holders pool tiles: in the pool, every day and per NFT, accrued today, pays until; Holders;
   Mints; Economy log) and the side column (Mint card: status, progress, price in ETH and the pair token, quantity,
-  ETH / TOKEN switch, Mint; Your NFTs with You can claim and Claim; Keep it running: Share royalties after the
-  sell-out, Burn waiting ETH, Pay out; Details). Rows that open Basescan use `.pl-collection-rows`. Before the deploy
+  ETH / TOKEN switch, Mint; Your NFTs with You can claim, Claim and "Rewards for today will be ready after 00:00
+  UTC"; the folded "Advanced: keep it running" block (Share royalties after the sell-out, Burn waiting ETH, Pay out:
+  the keeper runs them); Details). Rows that open Basescan use `.pl-collection-rows`. Before the deploy
   the page shows the "coming soon" empty state (`NftNotLive`).
 - **Collection card** (`CollectionCard`): the dashboard card with the collection logo, status (Minting / Upcoming /
   Sold out / Ended) and Official badges, the mint price, a progress bar of minted / supply, holders and pool per day,
@@ -534,10 +554,13 @@ the same components and tokens as the hub; only these pieces are its own:
   scale, the number of Place tokens paired with it and "Launch with TICKER" (primary when the stock is a launch pair
   on this network, otherwise disabled). Categories are set by ticker in `src/launch/stockCategories.js`.
 - Don't use `<section>` inside a page: an old global rule gives it 100 px padding. Use a `div`.
-- **Profile menu**: a side menu (`.pl-launch-console-nav`, a pill row below 1100 px) with Rewards, Campaigns, NFTs,
-  Launches, Fees and Profile settings. **NFTs** (`ProfileNfts.jsx`): NFT holder rewards (one reward row per collection
-  with Claim; the same block also sits in Rewards when something is claimable), My NFTs (images per collection), My
-  collections (collection cards, Launch NFT) and Claim history. Saving the profile signs a message (no transaction).
+- **Profile menu**: a side menu (`.pl-launch-console-nav`, a pill row below 1100 px) with Launches, NFT launches, Fees,
+  Rewards and Profile settings. Saving the profile signs a message (no transaction).
+- **Advanced** (`Advanced` in `src/launch/ui/parts.jsx`, `.pl-launch-advanced`): a folded `<details>` card for manual
+  fallbacks of what Place runs on its own (Close the day, Keep it running). The summary is 13 px, 600, `--text-2`
+  with a settings icon and a chevron; the body opens with one sentence saying it happens automatically. The main
+  state instead is `ReadyNote` (`.pl-launch-ready-note`: a clock in `--accent` and "Rewards for today will be ready
+  after 00:00 UTC").
 
 ### Modals
 
@@ -632,7 +655,7 @@ viewport, on `.base-app-shell`. It is weaker on mobile. The docs go without it, 
 - **Page descriptions:** one factual sentence with no full stop: "Personal reward allocations, active claims, and
   distribution history".
 - **Buttons:** verb first: "Go to Claim Portal", "View rules", "Connect wallet".
-- **Names to keep:** Place, Dashboard, Stocks, Profile, Rewards, Projects, Campaigns, My rewards, My campaigns, Create, Claim all,
+- **Names to keep:** Place, Dashboard, Stocks, Profile, Rewards, Projects, Campaigns, My rewards, My launches, Create, Claim all,
   Agent Zone, Launchpad, Launch token, Register token, Launched on Place.
 
 ---

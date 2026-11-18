@@ -46,7 +46,7 @@ function ProgramDetail({ p, now }) {
   const withdrawTx = usePlaceTx();
   const amountIn = parseAmount(text, p.stakingToken.decimals);
   const tooMuch = amountIn && bal.data && amountIn > bal.data.balance;
-  const openAt = new Date(p.depositsOpenAt).getTime() / 1000;
+  const openAt = new Date(p.depositsOpenAt).getTime(); // ms, like `now` (useNow)
   const canDeposit = p.status !== 'ended' && now >= openAt;
 
   const stake = () => {
