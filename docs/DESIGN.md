@@ -444,7 +444,12 @@ the same components and tokens as the hub; only these pieces are its own:
   the hub campaigns and NFT collections the wallet created, with Create. **Fees**: 0.3.0 tokens get `VaultPanelV3.jsx` — the allocation
   bar and three blocks: Creator revenue (Claim), Community Pool (Create campaign opens `.pl-launch-fund-form`: holder
   rewards, trader rewards or staking, amount, reward token, start, minimum, days, slippage, the quote and the ready
-  transaction from `launch/fund-quote`), Automatic campaign (date; Start it now when due). 0.2.0 tokens keep
+  transaction from `launch/fund-quote`; a 0.3.1 pool adds the NFT holders tab — collection select with the eligible
+  official ones first and the rest disabled with the reason, share of the pool in % with 5/10/25% presets up to the
+  25% cap, reward token, start, days, minimum NFTs, an amber alert during the 30-day cooldown — and Buyback & burn —
+  share with 10/25/50/100% presets, slippage, tokens burned and burned so far; tabs show only when the pool supports
+  them), Automatic campaign (date; Start it now when due), then the Pool log (`.pl-launch-pool-log`, last entries as
+  `.pl-place-row` links to Basescan, amounts in mono). 0.2.0 tokens keep
   `VaultPanel.jsx` (your fees, burn with Run process(), community fund, raising shares); 0.1.0 the two-block card.
 - **Rewards hub** (`/hub`, `HubPage.jsx`, shared pieces in `vaults.jsx`, styles in `styles/rewards.css` plus the
   `.pl-vaults-*` / `.pl-vault-*` / `.pl-filter-*` classes of `launch.css`): every reward on Place in the vault look. The

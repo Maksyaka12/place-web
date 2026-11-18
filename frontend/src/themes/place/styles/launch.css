@@ -2233,6 +2233,26 @@
     grid-template-columns: 1fr;
   }
 }
+/* Community Pool: share presets (NFT holders, buyback & burn) and the pool log */
+.pl-launch-share-presets {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.pl-launch-share-presets button {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 0 12px;
+}
+.pl-launch-pool-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pl-launch-pool-log .pl-place-row {
+  text-decoration: none;
+  color: inherit;
+}
 .pl-launch-fee-grid.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

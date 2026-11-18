@@ -401,7 +401,73 @@ async function simulate(client, address, abi, functionName, args, account) {
   }
 }
 
-const COMMUNITY_READS = ['pendingFees', 'lastFundSpendAt', 'settings', 'quote', 'currentCreator'];
+const COMMUNITY_READS = ['pendingFees', 'lastFundSpendAt', 'settings', 'quote', 'currentCreator', 'token'];
+// 0.3.1 only: a 0.3.0 vault has none of these, so they are read apart and may fail.
+const COMMUNITY_READS_031 = ['nftFactory', 'priceGuard', 'lastNftCampaignAt', 'NFT_CAMPAIGN_COOLDOWN', 'MAX_NFT_CAMPAIGN_BPS', 'totalBurned'];
+
+/** Collections of the NFT launchpad paired with `token`: official first, then the most minted; why each can or cannot get a pool campaign. */
+export async function poolNftCollections(db, chainId, token, factory) {
+  let rows;
+  try {
+    rows = await db.query(
+      `select address, factory, name, symbol, official, kind, total_minted, mint_price::text as mint_price from nft_launch_collections
+       where chain_id = $1 and token = $2 order by official desc, total_minted desc, created_at asc limit 50`,
+      [chainId, token]
+    );
+  } catch {
+    return []; // the NFT launchpad tables are not migrated yet
+  }
+  return rows.map((r) => {
+    const reason =
+      factory && r.factory !== factory
+        ? 'Made by another NFT factory'
+        : !r.official
+          ? 'Not official: only collections of the token’s creator'
+          : r.mint_price === '0'
+            ? 'Free mint: only paid collections'
+            : Number(r.total_minted) === 0
+              ? 'Nothing minted yet'
+              : null;
+    return { address: r.address, name: r.name, symbol: r.symbol, official: r.official, kind: r.kind, totalMinted: Number(r.total_minted), mintPrice: r.mint_price, eligible: reason == null, reason };
+  });
+}
+
+/** What the creator can do with the pool beyond streams and staking (0.3.1): NFT holder campaigns and buyback & burn. */
+async function poolActions031(deps, chainId, vault, v, now) {
+  const client = deps.client(chainId);
+  let x;
+  try {
+    const res = await retry(() => client.multicall({ contracts: COMMUNITY_READS_031.map((functionName) => ({ address: vault, abi: COMMUNITY_VAULT_ABI, functionName })), allowFailure: true }));
+    if (res.some((r) => r.status !== 'success')) return { supported: false, reason: 'This Community Pool was made by Place Launch 0.3.0: NFT campaigns and buybacks came with 0.3.1' };
+    x = Object.fromEntries(COMMUNITY_READS_031.map((k, i) => [k, res[i].result]));
+  } catch {
+    return { supported: false, reason: 'Could not read the community vault' };
+  }
+  const factory = lower(x.nftFactory);
+  const last = Number(x.lastNftCampaignAt);
+  const nextAt = last === 0 ? 0 : last + Number(x.NFT_CAMPAIGN_COOLDOWN);
+  const nftOn = factory !== ETH;
+  const buybackOn = lower(x.priceGuard) !== ETH && lower(v.settings.rewardRegistry) !== ETH;
+  return {
+    supported: true,
+    nft: {
+      available: nftOn,
+      reason: nftOn ? null : 'This pool has no NFT factory',
+      factory: nftOn ? factory : null,
+      maxBps: Number(x.MAX_NFT_CAMPAIGN_BPS),
+      cooldown: Number(x.NFT_CAMPAIGN_COOLDOWN),
+      lastAt: last ? iso(last * 1000) : null,
+      nextAt: nextAt > now ? iso(nextAt * 1000) : null,
+      collections: nftOn ? await poolNftCollections(deps.db, chainId, lower(v.token), factory) : [],
+    },
+    buyback: {
+      available: buybackOn,
+      reason: buybackOn ? null : 'Buybacks need the PlacePriceGuard and the reward token registry',
+      priceGuard: lower(x.priceGuard),
+      totalBurned: x.totalBurned.toString(),
+    },
+  };
+}
 
 /** Community Pool of a 0.3.0 token: balance, default campaign state and the calls the creator (or anyone) can make. */
 export async function communityPanel(deps, chainId, vault, now, { creator = null } = {}) {
@@ -450,8 +516,11 @@ export async function communityPanel(deps, chainId, vault, now, { creator = null
       tx: tx('startDefaultCampaign'),
     },
     collectTx: tx('collect'),
-    // fundCampaign / fundStaking need amounts and a swap quote: GET launch/fund-quote returns the encoded call.
-    fundQuote: `launch/fund-quote?token=<token>&rewardToken=<address|eth>&amountIn=<units>&kind=holders|traders|staking`,
+    creator: lower(v.currentCreator),
+    actions: await poolActions031(deps, chainId, vault, v, now),
+    // fundCampaign / fundStaking / fundNftCampaign / buybackAndBurn need amounts and a quote: GET launch/fund-quote
+    // returns the encoded call.
+    fundQuote: `launch/fund-quote?token=<token>&rewardToken=<address|eth>&amountIn=<units>&kind=holders|traders|staking|nft|buyback`,
     history: history.map((h) => ({ kind: h.kind, amount: h.amount, amount2: h.amount2, account: h.account, ref: h.ref, data: h.data ? JSON.parse(h.data) : null, tx: h.tx, at: iso(h.at) })),
   };
 }

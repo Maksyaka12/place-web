@@ -54,6 +54,12 @@ export function vaultReason(reason, q) {
   if (/SlippageExceeded/.test(reason)) return 'The price moved: refresh the quote';
   if (/CommunityDisabled/.test(reason)) return 'This token has no community fund';
   if (/NotCreator/.test(reason)) return 'Only the current creator can do this';
+  m = reason.match(/NftCampaignTooSoon\((\d+)\)/);
+  if (m) return `One NFT campaign per 30 days: the next from ${formatUtc(Number(m[1]) * 1000)}`;
+  m = reason.match(/NftCampaignTooLarge\((\d+), (\d+)\)/);
+  if (m && q) return `An NFT campaign may spend up to 25% of the pool: ${formatAmount(m[2], q.decimals, { maxDecimals: 6 })} ${q.symbol}`;
+  if (/InvalidCollection/.test(reason)) return 'This collection cannot get a pool campaign: it must be official, paid and have minted NFTs';
+  if (/BuybackDisabled/.test(reason)) return 'Buybacks are not enabled for this pool';
   return reason.length > 90 ? 'Not possible right now' : reason;
 }
 

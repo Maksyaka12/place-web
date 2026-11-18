@@ -326,7 +326,7 @@ async function hubAsset({ query: q }, deps) {
         available: Boolean(launch?.community_vault && generation >= 3),
         isCreator: Boolean(account && creator && account === creator),
         types: ['staking', 'holders', ...(generation >= 3 ? ['traders'] : [])],
-        note: 'The Community Pool funds staking, holder and trader rewards of its own token. NFT holder rewards are paid from a wallet.',
+        note: 'The Community Pool funds staking, holder and trader rewards of its own token here. NFT holder rewards from the pool start in Profile → Fees.',
       },
     },
     'no-store'

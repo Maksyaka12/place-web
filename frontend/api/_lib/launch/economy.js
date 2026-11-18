@@ -4,6 +4,7 @@
 //   GET launch/fund-quote  ?chain&token&rewardToken&amountIn[&slippageBps&kind=campaign|staking]   (0.2.0 tokens)
 //                          ?chain&token&rewardToken&amountIn[&slippageBps&kind=holders|traders|staking&epochCount
 //                           &startEpoch&criterion&metadataURI&startTime&epochDuration&earlyExit&penaltyBps]  (0.3.0)
+//                          kind=nft&collection&minNfts (0.3.1: fundNftCampaign), kind=buyback (0.3.1: buybackAndBurn)
 //                          what the fund gets in the reward token (a dry run of fundCampaign with an impossible
 //                          minOut: the vault reverts with SlippageExceeded(amountOut, minOut)), minOut, fees; for
 //                          0.3.0 also the ready fundCampaign / fundStaking transaction of the Community Pool
@@ -281,7 +282,9 @@ const STREAM_KINDS = { holders: 0, traders: 1 };
 async function fundQuoteV3(q, deps, { chainId, row, rewardToken, amountIn, slippageBps }) {
   if (!row.community_vault) fail('This token has no community basket', 409);
   const kind = q.kind || 'holders';
-  if (kind !== 'staking' && !(kind in STREAM_KINDS)) fail('kind must be holders, traders or staking');
+  if (kind === 'nft') return nftCampaignQuote(q, deps, { chainId, row, rewardToken, amountIn, slippageBps });
+  if (kind === 'buyback') return buybackQuote(q, deps, { chainId, row, amountIn, slippageBps });
+  if (kind !== 'staking' && !(kind in STREAM_KINDS)) fail('kind must be holders, traders, staking, nft or buyback');
   const vault = row.community_vault;
   const creator = row.current_creator;
   const fundAsset = row.quote;
@@ -353,6 +356,113 @@ async function fundQuoteV3(q, deps, { chainId, row, rewardToken, amountIn, slipp
     epochCount,
     tx,
     error,
+  });
+}
+
+const intParam = (v, name, def, lo, hi) => {
+  const n = v == null || v === '' ? def : Number(v);
+  if (!Number.isInteger(n) || n < lo || n > hi) fail(`${name} must be ${lo}–${hi}`);
+  return n;
+};
+
+/**
+ * 0.3.1 Community Pool → daily NFT holders stream (fundNftCampaign) for an official, paid Place collection of this
+ * token. The swap quote comes from a dry run with an impossible minOut (the vault checks the collection, the 30-day
+ * cooldown and the 25% cap first, so their errors come back as they are); then the real call is simulated from the
+ * creator's address.
+ */
+async function nftCampaignQuote(q, deps, { chainId, row, rewardToken, amountIn, slippageBps }) {
+  const collection = addressOf(q.collection, 'collection');
+  const [c] = await deps.db.query('select token, official from nft_launch_collections where chain_id = $1 and address = $2', [chainId, collection]);
+  if (!c) fail('Not a Place NFT launchpad collection (or not indexed yet)', 404);
+  if (c.token !== row.token) fail('This collection is not paired with this token', 409);
+  const vault = row.community_vault;
+  const creator = row.current_creator;
+  const fundAsset = row.quote;
+  const client = deps.client(chainId);
+  const now = deps.now();
+  const today = Math.floor(now / EPOCH);
+  const epochCount = intParam(q.epochCount, 'epochCount', 30, 1, 365);
+  const startEpoch = intParam(q.startEpoch, 'startEpoch', today + 1, today, today + 30);
+  const minNfts = intParam(q.minNfts, 'minNfts', 1, 1, 10_000);
+  const req = (minOut) => ({ collection, fundAsset, amountIn, rewardToken, minOut, startEpoch: BigInt(startEpoch), epochCount: BigInt(epochCount), minNfts: BigInt(minNfts), metadataURI: String(q.metadataURI || '') });
+  let amountOut = null;
+  let error = null;
+  if (rewardToken === fundAsset) amountOut = amountIn;
+  else {
+    const sim = await simulate(client, vault, COMMUNITY_VAULT_ABI, 'fundNftCampaign', [req(maxUint256)], creator);
+    if (sim.revert?.name === 'SlippageExceeded') amountOut = BigInt(sim.revert.args[0]);
+    else error = sim.ok ? 'Unexpected success' : sim.error;
+  }
+  const minOut = amountOut == null ? null : rewardToken === fundAsset ? amountOut : (amountOut * BigInt(10_000 - slippageBps)) / BPS;
+  let tx = null;
+  if (minOut != null) {
+    const sim = await simulate(client, vault, COMMUNITY_VAULT_ABI, 'fundNftCampaign', [req(minOut)], creator);
+    if (sim.ok) tx = { to: vault, value: '0', from: creator, data: encodeFunctionData({ abi: COMMUNITY_VAULT_ABI, functionName: 'fundNftCampaign', args: [req(minOut)] }) };
+    else error = sim.error;
+  }
+  const r = releaseByVersion(chainId, row.version);
+  let feeBps = null;
+  try {
+    feeBps = Number(await client.readContract({ address: r.rewardsDistributor, abi: REWARDS_DISTRIBUTOR_ABI, functionName: 'streamFeeBps' }));
+  } catch {
+    feeBps = null;
+  }
+  const budget = minOut == null || feeBps == null ? null : (minOut * BPS) / (BPS + BigInt(feeBps));
+  return reply(200, {
+    chainId,
+    token: row.token,
+    version: row.version,
+    vault,
+    kind: 'nft',
+    collection,
+    official: c.official,
+    fundAsset: outAddr(fundAsset),
+    rewardToken: outAddr(rewardToken),
+    amountIn: amountIn.toString(),
+    amountOut: amountOut?.toString() ?? null,
+    swap: rewardToken !== fundAsset,
+    slippageBps,
+    minOut: minOut?.toString() ?? null,
+    feeBps,
+    budget: budget?.toString() ?? null,
+    perEpoch: budget == null ? null : (budget / BigInt(epochCount)).toString(),
+    epochCount,
+    startEpoch,
+    minNfts,
+    tx,
+    error,
+  });
+}
+
+/**
+ * 0.3.1 Community Pool → buyback & burn (buybackAndBurn) of this token with the pair asset, through the launch pool.
+ * A dry run from the creator's address with minOut 0 returns the tokens burned (the vault still applies the
+ * PlacePriceGuard floor); minOut is that minus the slippage.
+ */
+async function buybackQuote(q, deps, { chainId, row, amountIn, slippageBps }) {
+  const vault = row.community_vault;
+  const creator = row.current_creator;
+  const fundAsset = row.quote;
+  const client = deps.client(chainId);
+  const req = (minOut) => ({ fundAsset, amountIn, minOut });
+  const dry = await simulate(client, vault, COMMUNITY_VAULT_ABI, 'buybackAndBurn', [req(0n)], creator);
+  const amountOut = dry.ok ? BigInt(dry.result) : null;
+  const minOut = amountOut == null ? null : (amountOut * BigInt(10_000 - slippageBps)) / BPS;
+  return reply(200, {
+    chainId,
+    token: row.token,
+    version: row.version,
+    vault,
+    kind: 'buyback',
+    fundAsset: outAddr(fundAsset),
+    amountIn: amountIn.toString(),
+    amountOut: amountOut?.toString() ?? null,
+    swap: true,
+    slippageBps,
+    minOut: minOut?.toString() ?? null,
+    tx: minOut == null ? null : { to: vault, value: '0', from: creator, data: encodeFunctionData({ abi: COMMUNITY_VAULT_ABI, functionName: 'buybackAndBurn', args: [req(minOut)] }) },
+    error: dry.ok ? null : dry.error,
   });
 }
 

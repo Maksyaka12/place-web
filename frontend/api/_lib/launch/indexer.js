@@ -479,6 +479,10 @@ export async function applyLaunchLog(q, log, ctx) {
         return row('fund_campaign', a.pool, a.paid, a.rewardToken, a.campaignId, { isDefault: a.isDefault });
       case 'FundStakingCreated':
         return row('fund_staking', a.paid, a.rewardPerEpoch, a.rewardToken, lower(a.stakingVaultId), { epochCount: a.epochCount });
+      case 'FundNftCampaignCreated': // 0.3.1: follows the stream's FundCampaignCreated (fund_stream) in the same call
+        return row('fund_nft_stream', null, null, a.collection, lower(a.streamId));
+      case 'FundBurned': // 0.3.1 buybackAndBurn: fund asset spent → tokens sent to 0x…dEaD
+        return row('fund_burned', a.amountIn, a.tokensBurned, a.fundAsset);
       case 'BoughtBack':
         return row('bought_back', a.quoteIn, a.tokenOut, a.destination);
       case 'CreatorPaid':
