@@ -7,7 +7,7 @@
 //   GET  /api/place/token        ?chain&address          asset info and its campaigns
 //   GET  /api/place/collections  ?chain[&creator]
 //   GET  /api/place/holders      ?chain&target&kind[&min&limit]   preview for the Create form
-//   POST /api/place/pin          {kind: rules|metadata|image, …}
+//   POST /api/place/pin          {kind: rules|metadata|image|folder, …}   folder: NFT images or metadata as one IPFS folder
 //   POST /api/place/admin/hide   {chainId, action, type, target, admin, issuedAt, signature}
 //   GET  /api/place/launch/*     Place Launch: tokens, token, candles, trades, holders, creator, predict, pairs (../launch/api.js)
 import { encodeFunctionData } from 'viem';
@@ -20,6 +20,7 @@ import { proofFromDb } from './snapshotJob.js';
 import { transfersPage, erc20BalancesAt, nftHoldingsAt, autoExclusions, retry } from './chain.js';
 import { reply, bad, HttpError, fail, chainOf, addressOf, limits, iso, str } from './http.js';
 import { LAUNCH_ROUTES } from '../launch/api.js';
+import { reviewRegistration } from '../launch/projects.js';
 import { ensureTokenMeta } from './tokenMeta.js';
 
 export { ensureTokenMeta };
@@ -29,6 +30,34 @@ const PIN_LIMIT_PER_HOUR = 30;
 const MAX_METADATA_BYTES = 10 * 1024;
 const MAX_IMAGE_BYTES = 600 * 1024;
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const MAX_FOLDER_BYTES = 3_500_000; // under the 4.5 MB request limit of serverless functions, after base64
+const MAX_FOLDER_FILES = 1000;
+const FILE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+const NFT_IMAGE_LINK = /^(ipfs:\/\/[A-Za-z0-9]+(\/[A-Za-z0-9._-]+)*|https:\/\/\S+)$/;
+
+/** One file of a folder pin: an image, or NFT metadata JSON (name, description, image, attributes). */
+function folderFile(f) {
+  if (!f || !FILE_NAME.test(String(f.name || ''))) fail('Each file needs a name of letters, digits, dot, dash or underscore');
+  if (f.contentType === 'application/json') {
+    let m;
+    try {
+      m = typeof f.content === 'string' ? JSON.parse(f.content) : f.content;
+    } catch {
+      fail(`${f.name}: not valid JSON`);
+    }
+    if (!m || typeof m !== 'object' || typeof m.name !== 'string' || !m.name.trim() || m.name.length > 200) fail(`${f.name}: name must be 1–200 characters`);
+    if (m.description != null && (typeof m.description !== 'string' || m.description.length > 2000)) fail(`${f.name}: description is too long`);
+    if (m.image != null && !NFT_IMAGE_LINK.test(m.image)) fail(`${f.name}: image must be an ipfs:// or https:// link`);
+    if (m.attributes != null && (!Array.isArray(m.attributes) || m.attributes.length > 50)) fail(`${f.name}: attributes must be a list of up to 50`);
+    const attributes = m.attributes ? { attributes: m.attributes.map((a) => ({ trait_type: String(a?.trait_type ?? '').slice(0, 64), value: String(a?.value ?? '').slice(0, 128) })) } : {};
+    const clean = { name: m.name.trim(), description: m.description ?? null, image: m.image ?? null, ...attributes };
+    return { name: f.name, bytes: Buffer.from(canonicalJson(clean)), contentType: 'application/json' };
+  }
+  if (!IMAGE_TYPES.includes(f.contentType)) fail(`${f.name}: contentType must be application/json or one of ${IMAGE_TYPES.join(', ')}`);
+  const bytes = Buffer.from(String(f.data || ''), 'base64');
+  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) fail(`${f.name}: image must be 1 byte to ${MAX_IMAGE_BYTES / 1024} KB`);
+  return { name: f.name, bytes, contentType: f.contentType };
+}
 const SIGNATURE_MAX_AGE_MS = 10 * 60 * 1000;
 
 /**
@@ -414,8 +443,17 @@ async function pin(req, deps) {
     bytes = Buffer.from(String(b.data || ''), 'base64');
     if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) fail(`image must be 1 byte to ${MAX_IMAGE_BYTES / 1024} KB`);
     contentType = b.contentType;
+  } else if (b.kind === 'folder') {
+    if (!Array.isArray(b.files) || !b.files.length || b.files.length > MAX_FOLDER_FILES) fail(`files must list 1 to ${MAX_FOLDER_FILES} files`);
+    const files = b.files.map(folderFile);
+    if (new Set(files.map((f) => f.name)).size !== files.length) fail('File names must be unique');
+    if (files.reduce((n, f) => n + f.bytes.length, 0) > MAX_FOLDER_BYTES) fail('The folder is too big for one upload: send fewer files at a time');
+    if (!deps.pinFolder) fail('Folder uploads are not available here', 503);
+    const uri = await deps.pinFolder(files, { name: `place-folder-${Date.now()}` });
+    await deps.db.query('insert into pin_log (ip, kind, uri) values ($1, $2, $3)', [ip, b.kind, uri]);
+    return reply(200, { uri, files: files.length });
   } else {
-    fail('kind must be rules, metadata or image');
+    fail('kind must be rules, metadata, image or folder');
   }
   const uri = await deps.pin(bytes, { name: `place-${b.kind}-${Date.now()}`, contentType });
   await deps.db.query('insert into pin_log (ip, kind, uri) values ($1, $2, $3)', [ip, b.kind, uri]);
@@ -428,8 +466,9 @@ async function moderate(req, deps) {
   const admin = addressOf(b.admin, 'admin');
   const admins = (process.env.PLACE_ADMINS ? process.env.PLACE_ADMINS.split(',') : DEFAULT_ADMINS).map((a) => a.trim().toLowerCase());
   if (!admins.includes(admin)) fail('This wallet is not a Place admin', 403);
-  if (!['hide', 'unhide'].includes(b.action)) fail('action must be hide or unhide');
-  if (!['campaign', 'asset', 'collection'].includes(b.type)) fail('type must be campaign, asset or collection');
+  const review = b.type === 'registration';
+  if (!(review ? ['verify', 'reject'] : ['hide', 'unhide']).includes(b.action)) fail(review ? 'action must be verify or reject' : 'action must be hide or unhide');
+  if (!['campaign', 'asset', 'collection', 'registration'].includes(b.type)) fail('type must be campaign, asset, collection or registration');
   const issued = Date.parse(b.issuedAt);
   if (Number.isNaN(issued) || Math.abs(deps.now() * 1000 - issued) > SIGNATURE_MAX_AGE_MS) fail('Signature expired, sign again', 401);
   const message = moderationMessage({ admin, chainId, action: b.action, type: b.type, target: b.target, issuedAt: b.issuedAt });
@@ -439,6 +478,10 @@ async function moderate(req, deps) {
     .catch(() => false);
   if (!valid) fail('Signature check failed', 401);
 
+  if (review) {
+    const status = await reviewRegistration(deps, chainId, addressOf(b.target, 'target'), b.action);
+    return reply(200, { ok: true, action: b.action, type: b.type, target: String(b.target).toLowerCase(), status });
+  }
   const hide = b.action === 'hide';
   if (b.type === 'campaign') {
     const [hub, id] = String(b.target).toLowerCase().split(':');

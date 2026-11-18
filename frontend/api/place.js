@@ -3,7 +3,7 @@
 import { handlePlace } from './_lib/place/api.js';
 import { getDb } from './_lib/place/db.js';
 import { chainClient } from './_lib/place/chain.js';
-import { pinText } from './_lib/place/ipfs.js';
+import { pinText, pinFolder } from './_lib/place/ipfs.js';
 import { toJson } from './_lib/place/cron.js';
 import { refreshIndex, logsClient } from './_lib/place/indexer.js';
 
@@ -31,6 +31,7 @@ export async function placeRequest(req) {
     alchemyKey: process.env.ALCHEMY_API_KEY,
     fetchFn: fetch,
     pin: (bytes, { name, contentType }) => pinText(bytes, { name, contentType }),
+    pinFolder: (files, { name }) => pinFolder(files, { name }),
     now: () => Math.floor(Date.now() / 1000),
     // Launch market endpoints catch the indexer up first; PLACE_READ_THROUGH=0 turns it off.
     refresh: process.env.PLACE_READ_THROUGH === '0' ? null : (chainId) => refreshIndex({ db, client: logs(chainId), chainId }),

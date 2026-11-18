@@ -30,6 +30,27 @@ export async function pinText(text, { name, jwt = process.env.PINATA_JWT, fetchF
   }, 3);
 }
 
+const PINATA_FOLDER = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
+
+/**
+ * Pins several files as one IPFS folder and returns `ipfs://<cid>/` (a folder URI, ready for a collection's base URI).
+ * `files`: [{ name, bytes, contentType }]. The folder upload goes through Pinata's pinFileToIPFS (each file under
+ * `<folder>/<name>`), the endpoint that keeps a directory as one CID.
+ */
+export async function pinFolder(files, { name, jwt = process.env.PINATA_JWT, fetchFn = fetch }) {
+  if (!jwt) throw new Error('PINATA_JWT is not set');
+  return retry(async () => {
+    const form = new FormData();
+    for (const f of files) form.append('file', new Blob([f.bytes], { type: f.contentType }), `${name}/${f.name}`);
+    form.append('pinataMetadata', JSON.stringify({ name }));
+    form.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
+    const res = await fetchFn(PINATA_FOLDER, { method: 'POST', headers: { Authorization: `Bearer ${jwt}` }, body: form });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.IpfsHash) throw new Error(`Pinata folder upload failed: ${body?.error?.details || body?.error?.reason || body?.error || res.status}`);
+    return `ipfs://${body.IpfsHash}/`;
+  }, 3);
+}
+
 /** Fetches an ipfs:// URI as text, trying gateways in turn. */
 export async function fetchIpfsText(uri, { fetchFn = fetch, gateways = GATEWAYS, timeoutMs = 20_000 } = {}) {
   // Place Launch vaults commit an https:// rules template; its hash is checked like any rules.

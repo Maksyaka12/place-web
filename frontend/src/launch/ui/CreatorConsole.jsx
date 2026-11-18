@@ -8,7 +8,7 @@ import { Link, NavLink, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallets } from '@privy-io/react-auth';
 import { toHex, isAddress } from 'viem';
-import { ArrowLeft, LayoutDashboard, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock, Image as ImageIcon } from 'lucide-react';
 import { Button, Card, Badge, EmptyState, Alert } from '../../themes/place/components/ui';
 import { TxButton, TxResult, ConnectButton, CopyAddress, QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx, useNow } from '../../place/hooks';
@@ -24,6 +24,7 @@ import { TokenLogo, launchTokenPath, launchNewPath, consolePath } from './parts.
 import { VaultPanel } from './VaultPanel.jsx';
 import { VaultPanelV3 } from './VaultPanelV3.jsx';
 import { ProfileRewards } from './ProfileRewards.jsx';
+import { ProfileNfts, NftRewards } from './ProfileNfts.jsx';
 import CampaignRewards from '../../themes/place/pages/place/RewardsPage.jsx';
 import MyCampaigns from '../../themes/place/pages/place/MyCampaignsPage.jsx';
 import { money } from './TokenCard.jsx';
@@ -34,6 +35,7 @@ import { useLaunchLive, useLiveTokens } from '../live.js';
 const SECTIONS = [
   { id: 'rewards', label: 'Rewards', Icon: Gift },
   { id: 'campaigns', label: 'Campaigns', Icon: LayoutDashboard },
+  { id: 'nfts', label: 'NFTs', Icon: ImageIcon },
   { id: 'launches', label: 'Launches', Icon: Rocket },
   { id: 'fees', label: 'Fees', Icon: Coins },
   { id: 'settings', label: 'Profile settings', Icon: UserRound },
@@ -582,10 +584,13 @@ export default function CreatorConsole() {
           ) : active === 'rewards' ? (
             <>
               <ProfileRewards address={address} />
+              <NftRewards address={address} />
               <CampaignRewards />
             </>
           ) : active === 'campaigns' ? (
             <MyCampaigns />
+          ) : active === 'nfts' ? (
+            <ProfileNfts address={address} />
           ) : (
             <Launches address={address} now={now} />
           )}

@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Layers, EyeOff, Rocket, Gift, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Layers, EyeOff, Rocket, Gift, Image as ImageIcon } from 'lucide-react';
 import { isAddress } from 'viem';
 import { Card, Tile, Alert, Button, EmptyState, SectionTitle, Badge } from '../../components/ui';
 import { useToken } from '../../../../place/hooks';
@@ -11,7 +11,8 @@ import { isTestnet, PLACE_CHAIN } from '../../../../place/chain';
 import { formatUtc, shortAddress } from '../../../../place/format';
 import { CampaignCard, AddressLink, CopyAddress, TokenIcon, QueryError, Skeleton } from './parts';
 import { viewStatus } from '../../../../place/status';
-import { useHubStreams, useStakingPrograms } from '../../../../launch/hooks.js';
+import { useHubStreams, useStakingPrograms, useCollections, useProjects } from '../../../../launch/hooks.js';
+import { CollectionsSection } from '../../../../launch/ui/CollectionParts.jsx';
 import { hubItems, HubCard } from '../../../../launch/ui/HubPage.jsx';
 
 /** USD price and market link from DexScreener (Base mainnet only; test tokens have no market). */
@@ -38,6 +39,9 @@ export default function TokenPage() {
   const q = useToken(address);
   const price = usePrice(address);
   const streams = useHubStreams({ token: address }, { enabled: Boolean(address) });
+  const collections = useCollections({ token: address }, { enabled: Boolean(address) });
+  const registered = useProjects({ token: address }, { enabled: Boolean(address) });
+  const project = registered.data?.projects?.find((p) => p.status === 'verified') || null;
   const staking = useStakingPrograms({ token: address }, { enabled: Boolean(address) });
   const rewards = useMemo(() => hubItems(streams.data?.streams, staking.data?.programs).filter((it) => it.target.address === address), [streams.data, staking.data, address]);
   const t = q.data;
@@ -102,6 +106,11 @@ export default function TokenPage() {
             {t.placeLaunch && (
               <Badge pill tone="accent">
                 <Rocket size={12} /> Launched on Place
+              </Badge>
+            )}
+            {project && (
+              <Badge pill tone="accent">
+                <BadgeCheck size={12} /> Registered project
               </Badge>
             )}
             <AddressLink address={address} />
@@ -252,14 +261,16 @@ export default function TokenPage() {
 
       {!nft && (
         <section className="pl-place-section">
-          <SectionTitle title="Collections" count={0} />
-          <Card className="pl-place-empty-card">
-            <EmptyState
-              icon={<ImageIcon size={28} />}
-              title={`No NFT collections for ${name} yet`}
-              description="NFT collections tied to this token will be listed here, with the creator's own collection marked as official"
-            />
-          </Card>
+          <SectionTitle
+            title="Collections"
+            count={collections.data?.total ?? undefined}
+            right={
+              <Button as={Link} to="/launch/nft" size="sm">
+                <ImageIcon size={14} /> Launch NFT
+              </Button>
+            }
+          />
+          <CollectionsSection token={address} name={name} />
         </section>
       )}
     </div>

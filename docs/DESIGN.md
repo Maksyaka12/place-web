@@ -170,7 +170,7 @@ There is no sidebar and no bottom bar: everything hangs off one top bar, as on a
 
 | Width | Pages |
 |---|---|
-| 1536 px | Dashboard, Stocks, launch token page, Launch a token (form and preview), Launch NFT, Profile, every Rewards hub page, Projects and project pages |
+| 1536 px | Dashboard, Stocks, launch token page, Launch a token (form and preview), Launch NFT, Profile, every Rewards hub page, Projects, project and collection pages |
 | 1040 px | Agent Zone, Skill, Admin |
 | 760 px | Docs article (its own shell: top bar, menu, "On this page") |
 | 640 px | Settings |
@@ -459,7 +459,7 @@ the same components and tokens as the hub; only these pieces are its own:
   collections), the ID with copy, status and an arrow, then a 2×2 grid of 11 px caps labels and 16 px mono values
   (staking: Live APR, TVL, Epochs, Early withdrawal; streams: Per day or Last day, Pool or Funded so far, Epochs N / M
   or N with "Every day, no end", Condition in 13 px; snapshot campaigns: Pool, Claimed, Snapshot, Claim until), then
-  tags: the source (Token economy, Community Pool, Creator in accent; Community neutral), Launched on Place or Place
+  tags: the source (Token economy, Community Pool, Creator, Mint economy in accent; Community neutral), Launched on Place or Place
   collection, Snapshot, Not supported (amber), You can claim / You stake (green), You funded. The table
   (`.pl-rewards-row`, 7 columns, scrolls sideways inside its card) shows the same with the source under the name. A
   staking card opens `/staking?program=` (the vault page: stake form, position, claim, withdraw; `/staking` alone opens
@@ -481,19 +481,45 @@ the same components and tokens as the hub; only these pieces are its own:
   withdrawal for staking. The summary: per day, Place fee, You pay, Runs and the button; an info alert on how it pays
   out; for NFT rewards an amber alert linking to Launch NFT. `?type=` and `?token=` fill the form; a created stream or
   vault opens right away.
-- **Launch NFT** (`/launch/nft`, `LaunchNftPage.jsx`): the same layout with 01 Collection, 02 Mint, 03 Your token and
-  royalties (part of every mint buys back and burns your token); the summary card with Launch collection, an info
-  alert that Place collections can get holder rewards, and Your collections (each with Reward holders). After the
-  launch: Reward its holders (primary), Open collection, Transaction.
+- **Launch NFT** (`/launch/nft`, `LaunchNftPage.jsx`, logic in `src/launch/nft.js`, styles `styles/collections.css`,
+  `.pl-collection-*`): the launch-form layout with four steps. 01 Basics: logo, name, symbol, description, Unique or Edition
+  (kind cards), supply, max per wallet, then the files: Unique uploads one image per NFT (thumbnails numbered by file
+  name, Upload to IPFS sends the images in folders of up to ~2.8 MB and every NFT's metadata JSON as one folder) or
+  points to a metadata folder of its own; Edition takes one image or a link; mint opens / closes in UTC. 02 Pair token:
+  `NftTokenPicker.jsx` (the pair picker's modal: Crypto / Stocks / Majors, search, Launched on Place badges; a pasted
+  address is checked, and a token without a swap route gets the reason and Register token). 03 Mint: price in ETH and
+  the "Also accept TOKEN" option with today's equivalent. 04 Economy: Place 20% fixed, the ring (`AllocationRing` with
+  four arcs, Place in `--text-3` via `.platform`) beside three bucket sliders (Creator `--accent`, NFT holders
+  `--green`, Buyback & burn `--red`), "Each mint at X ETH" in ETH and %, the holders' reward token (pair token by
+  default, ETH or a routed token), royalty 0–10% and the 30-day pool in plain words. On the right: Live preview (first
+  NFT image or logo, price, supply, reward token, royalty, allocation bar) and the summary with Launch collection. Before
+  the NFT launchpad is deployed an info alert says it is coming and the button says when launching opens. After the
+  launch the collection page opens.
+- **Collection page** (`/collection/:address`, `CollectionPage.jsx`, pieces in `CollectionParts.jsx`): back to Projects,
+  the head (logo, name, symbol, Official with a check, Unique / Edition, Paired with TOKEN), 3 tiles (Minted, Mint
+  revenue, Burned), then the main column (gallery 4/3/2 columns of NFT images from their metadata or the edition image,
+  Economy ring and table, Holders pool tiles: in the pool, every day and per NFT, accrued today, pays until; Holders;
+  Mints; Economy log) and the side column (Mint card: status, progress, price in ETH and the pair token, quantity,
+  ETH / TOKEN switch, Mint; Your NFTs with You can claim and Claim; Keep it running: Share royalties after the
+  sell-out, Burn waiting ETH, Pay out; Details). Rows that open Basescan use `.pl-collection-rows`. Before the deploy
+  the page shows the "coming soon" empty state (`NftNotLive`).
+- **Collection card** (`CollectionCard`): the dashboard card with the collection logo, status (Minting / Upcoming /
+  Sold out / Ended) and Official badges, the mint price, a progress bar of minted / supply, holders and pool per day,
+  SYMBOL / PAIR and Unique or Edition. Used in Projects (Collections), project pages, the profile and nowhere else.
 - **Projects** (`/projects`, `ProjectsPage.jsx`, `.pl-projects-*`): the head with Register token and Launch token
   (primary); a toolbar with the search and three `.seg.soft` filters (All / Economy / Standard, All / Crypto / Stocks,
   Market cap / Newest / Most campaigns); then token cards in `.pl-launch-grid` (the dashboard card: artwork with an
   Economy or Standard badge and the release for tokens older than 0.3.0, market cap, live and upcoming campaigns
   (streams, staking, snapshot campaigns) and holders, Tax X% / Y% and Rewards tags, TOKEN / PAIR). A card opens the
   project page (`/token/:address`, `pages/place/TokenPage.jsx`): back to Projects, head and tiles, Rewards and
-  staking (hub cards for this token, Open in Rewards), Campaigns, Who created them and Collections (an empty state for
-  now). **Register token** (`/projects/register`, `RegisterTokenPage.jsx`): a Soon badge, an info alert and the three
-  steps; registration itself is not open yet.
+  staking (hub cards for this token, Open in Rewards), Campaigns, Who created them and Collections (collection cards of
+  this pair token, the official one first, Launch NFT on the right). A Tokens / Collections `.seg.soft` above the toolbar
+  switches Projects to collection cards (`?view=collections`: search, All / Official / Paying holders, Newest / Most
+  minted / Biggest pool). Verified registered tokens join the token cards with a Registered badge and their liquidity.
+  **Register token** (`/projects/register`, `RegisterTokenPage.jsx`, `?token=`): the three steps, the token address,
+  then checks with a green / amber / red icon (`.pl-projects-check`: owner() or admin() and this wallet, liquidity
+  against $10K), the registration status (Verified project, In review, Not accepted), Sign and register (a signed
+  message, no transaction) and an info alert on what stays with Place (swap routes, the onchain Official badge).
 - **Stocks** (`/stocks`, `StocksPage.jsx`, `.pl-stocks-*`): every Coinbase tokenized stock on Base, from
   `GET launch/stocks`. A hero card (`--r-xl`): 56 px title, one sentence, a stat block (Paired tokens and Onchain
   liquidity large; Listed stocks, Launch ready, Liquidity ≥ $10K small) and a cloud of stock logos on the right
@@ -503,8 +529,10 @@ the same components and tokens as the hub; only these pieces are its own:
   scale, the number of Place tokens paired with it and "Launch with TICKER" (primary when the stock is a launch pair
   on this network, otherwise disabled). Categories are set by ticker in `src/launch/stockCategories.js`.
 - Don't use `<section>` inside a page: an old global rule gives it 100 px padding. Use a `div`.
-- **Profile menu**: a side menu (`.pl-launch-console-nav`, a pill row below 1100 px) with Rewards, Launches, Fees
-  and Profile settings. Saving the profile signs a message (no transaction).
+- **Profile menu**: a side menu (`.pl-launch-console-nav`, a pill row below 1100 px) with Rewards, Campaigns, NFTs,
+  Launches, Fees and Profile settings. **NFTs** (`ProfileNfts.jsx`): NFT holder rewards (one reward row per collection
+  with Claim; the same block also sits in Rewards when something is claimable), My NFTs (images per collection), My
+  collections (collection cards, Launch NFT) and Claim history. Saving the profile signs a message (no transaction).
 
 ### Modals
 
@@ -615,7 +643,8 @@ viewport, on `.base-app-shell`. It is weaker on mobile. The docs go without it, 
 | `src/themes/place/components/ui/index.jsx` | The React components for the above |
 | `src/themes/place/styles/place.css` | Place pages and shell pieces (`pl-place-*`) |
 | `src/themes/place/styles/launch.css` | Place Launch pages (`pl-launch-*`), vault cards and filter pills (`pl-vault-*`, `pl-filter-*`) |
-| `src/themes/place/styles/rewards.css` | Rewards hub, Create vault / campaign, Launch NFT (`pl-rewards-*`) |
+| `src/themes/place/styles/rewards.css` | Rewards hub, Create vault / campaign (`pl-rewards-*`) |
+| `src/themes/place/styles/collections.css` | Launch NFT, collection page and cards, Place's share colour (`pl-collection-*`, `.platform`) |
 | `src/launch/ui/` | The Place Launch pages: dashboard, launch form, token page, creator console, the Rewards hub (`HubPage`, `HubStreamDetail`, `HubCreatePage`, `vaults.jsx`) and Launch NFT |
 | `src/themes/place/styles/{hub,claim,swap,docs}.css` | Shared card and table patterns, Swap, Docs |
 | `src/themes/place/pages/place/` | The Place pages |

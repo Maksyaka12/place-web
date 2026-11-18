@@ -76,16 +76,16 @@ function TaxSlider({ label, value, onChange }) {
 }
 
 /** The allocation as a ring: one arc per bucket, the total in the middle (with Reset in the form). */
-export function AllocationRing({ allocation, onReset, label = 'allocated' }) {
+export function AllocationRing({ allocation, onReset, label = 'allocated', buckets = BUCKETS, total: shownTotal }) {
   const r = 70;
   const c = 2 * Math.PI * r;
   let offset = 0;
-  const total = allocationTotal(allocation);
+  const total = shownTotal ?? buckets.reduce((s, b) => s + (Number(allocation[b.id]) || 0), 0);
   return (
     <div className="pl-econ-ring">
       <svg viewBox="0 0 180 180" aria-hidden="true">
         <circle cx="90" cy="90" r={r} className="pl-econ-ring-track" />
-        {BUCKETS.map((b) => {
+        {buckets.map((b) => {
           const v = Number(allocation[b.id]) || 0;
           if (!v) return null;
           const len = (v / 100) * c;
@@ -108,7 +108,7 @@ export function AllocationRing({ allocation, onReset, label = 'allocated' }) {
 }
 
 /** A bucket slider. The part of the track other buckets already hold is hatched and can't be taken. */
-function BucketSlider({ bucket, value, others, onChange }) {
+export function BucketSlider({ bucket, value, others, onChange }) {
   const free = 100 - others;
   return (
     <div className="pl-econ-bucket">

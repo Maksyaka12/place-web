@@ -148,6 +148,7 @@ export const SOURCE_BADGE = {
   pool: ['Community Pool', 'accent'],
   creator: ['Creator', 'accent'],
   community: ['Community', 'neutral'],
+  collection: ['Mint economy', 'accent'],
 };
 
 /** A plain amount for cards: compact when large, leading zeros counted when tiny. */

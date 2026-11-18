@@ -1,0 +1,253 @@
+/* NFT launchpad: Launch NFT, the collection page and collection cards (pl-collection-*). */
+
+/* Place's fixed share in the economy ring, bar and dots */
+.pl-econ .platform,
+.pl-launch-preview .platform,
+.pl-econ-palette .platform {
+  --c: var(--text-3);
+}
+
+/* Launch NFT: picked files, thumbnails and the upload */
+.pl-collection-files {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pl-collection-files-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pl-collection-thumbs,
+.pl-collection-mine {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+.pl-collection-thumb {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.pl-collection-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pl-collection-thumb figcaption,
+.pl-collection-nft figcaption {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  color: var(--on-image);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.pl-collection-thumb.more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.pl-collection-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pl-collection-upload .pl-place-hint {
+  overflow-wrap: anywhere;
+}
+.pl-collection-ok {
+  color: var(--green);
+  vertical-align: -2px;
+}
+.pl-collection-picker-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 4px;
+}
+.pl-collection-edition-drop img {
+  object-fit: contain;
+}
+.pl-collection-preview-art {
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pl-collection-preview-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Collection card */
+.pl-collection-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Economy ring and table */
+.pl-collection-econ {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+.pl-collection-econ .pl-econ-ring {
+  width: 180px;
+  height: 180px;
+}
+.pl-collection-econ-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.pl-collection-econ-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+.pl-collection-econ-row:first-child {
+  border-top: none;
+}
+
+/* Collection page */
+.pl-collection-gallery {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.pl-collection-gallery.edition {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+.pl-collection-nft {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.pl-collection-nft.small {
+  border-radius: var(--r-sm);
+}
+.pl-collection-nft-img,
+.pl-collection-edition-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pl-collection-edition-img {
+  aspect-ratio: 1;
+  max-height: 560px;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+.pl-collection-nft-img.empty,
+.pl-collection-edition-img.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+.pl-collection-mint-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pl-collection-mint-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pl-collection-qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pl-collection-qty-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pl-collection-qty-ctrl input {
+  width: 64px;
+  height: 36px;
+  text-align: center;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+}
+.pl-collection-qty-ctrl input:focus {
+  border-color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .pl-collection-econ {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+  .pl-collection-econ-table {
+    width: 100%;
+  }
+  .pl-collection-gallery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .pl-collection-thumbs,
+  .pl-collection-mine {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .pl-collection-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pl-collection-econ-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .pl-collection-econ-row > :last-child {
+    display: none;
+  }
+}
+
+/* Rows that open a transaction on Basescan */
+.pl-collection-rows > a.pl-place-row {
+  color: var(--text);
+  text-decoration: none;
+  gap: 12px;
+}
+.pl-collection-rows > a.pl-place-row .mono {
+  white-space: nowrap;
+}

@@ -73,6 +73,8 @@ export function createPlaceApi({ base = PLACE_API_BASE, chainId = PLACE_CHAIN_ID
     pinRules: (rules) => post('pin', { kind: 'rules', content: rules }),
     pinMetadata: ({ name, description, image }) => post('pin', { kind: 'metadata', content: { name, description, image } }),
     pinImage: ({ data, contentType }) => post('pin', { kind: 'image', data, contentType }),
+    /** Several files as one IPFS folder: [{ name, contentType, data (base64) | content (JSON) }] → { uri: 'ipfs://cid/' }. */
+    pinFolder: (files) => post('pin', { kind: 'folder', files }),
     /** Storefront moderation, signed by an admin wallet over moderationMessage(). */
     hide: (body) => post('admin/hide', { chainId, ...body }),
   };

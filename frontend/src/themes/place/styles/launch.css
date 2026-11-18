@@ -2164,6 +2164,40 @@
   font-size: 13px;
   font-weight: 600;
 }
+.pl-projects-token {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pl-projects-checks {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pl-projects-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.pl-projects-check > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.pl-projects-check.ok > svg {
+  color: var(--green);
+}
+.pl-projects-check.warn > svg {
+  color: var(--amber);
+}
+.pl-projects-check.bad > svg {
+  color: var(--red);
+}
 @media (max-width: 768px) {
   .pl-projects-actions,
   .pl-projects-actions .btn {

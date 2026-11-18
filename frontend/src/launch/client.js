@@ -58,4 +58,19 @@ export const launchApi = {
   /** Rewards hub create form: what a token or collection allows. */
   hubAsset: (q, signal) => get('hub/asset', q, signal),
   saveProfile: (body) => request('POST', 'profile', { body: { chainId: PLACE_CHAIN_ID, ...body } }),
+  /** NFT launchpad: collections ({ token, official, creator, holder, pool, q, sort, limit, offset }); { deployed: false } before the deploy. */
+  collections: (q = {}, signal) => get('collections', q, signal),
+  /** One collection with its live pool, holders, mints and log; with `account`, its NFTs and what it can claim. */
+  collection: (address, account, signal) => get('collection', account ? { address, account } : { address }, signal),
+  collectionHolders: (q, signal) => get('collection/holders', q, signal),
+  /** A wallet's NFTs, collections, claimable holder rewards and claims. */
+  nftAccount: (account, signal) => get('nft/account', { account }, signal),
+  /** Tokens a collection can pair with, and its reward token options. */
+  nftPairs: (signal) => get('nft/pairs', {}, signal),
+  /** Whether one token can pair a collection, and why not. */
+  nftPair: (address, signal) => get('nft/pair', { address }, signal),
+  /** Register token: what the API sees about a token and this wallet's rights. */
+  projectCheck: (q, signal) => get('projects/check', q, signal),
+  projects: (q = {}, signal) => get('projects', q, signal),
+  registerProject: (body) => request('POST', 'projects/register', { body: { chainId: PLACE_CHAIN_ID, ...body } }),
 };

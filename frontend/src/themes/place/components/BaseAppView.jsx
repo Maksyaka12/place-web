@@ -30,6 +30,7 @@ const PAGES = {
   StakingPage: () => import('../../../launch/ui/StakingPage'),
   ProjectsPage: () => import('../../../launch/ui/ProjectsPage'),
   RegisterTokenPage: () => import('../../../launch/ui/RegisterTokenPage'),
+  CollectionPage: () => import('../../../launch/ui/CollectionPage'),
   StocksPage: () => import('../../../launch/ui/StocksPage'),
   ...(FEATURES.agents
     ? {
@@ -57,6 +58,7 @@ const CreatorConsole = lazy(PAGES.CreatorConsole);
 const StakingPage = lazy(PAGES.StakingPage);
 const ProjectsPage = lazy(PAGES.ProjectsPage);
 const RegisterTokenPage = lazy(PAGES.RegisterTokenPage);
+const CollectionPage = lazy(PAGES.CollectionPage);
 const StocksPage = lazy(PAGES.StocksPage);
 
 let pagesWarm = false;
@@ -113,15 +115,16 @@ export function tabFromPath(pathname) {
   if (p.startsWith('/swap')) return 'buy';
   if (p.startsWith('/staking')) return 'staking';
   if (p.startsWith('/projects/register')) return 'register';
+  if (p.startsWith('/collection/')) return 'collection';
   if (p.startsWith('/projects')) return 'projects';
   for (const t of ['wallet', 'account', ...(FEATURES.agents ? AGENT_TABS : [])]) if (p.startsWith(`/${t}`)) return t;
   return 'dashboard';
 }
 
 /** The top-bar section a page belongs to. Rewards groups the campaign, staking and create pages; Projects groups
- * the project pages (a token or collection with its campaigns) and Register token. */
+ * the project pages (a token or collection with its campaigns), NFT collection pages and Register token. */
 const HUB_TABS = ['hub', 'campaign', 'create', 'staking', 'launch-nft'];
-const PROJECT_TABS = ['projects', 'token', 'register'];
+const PROJECT_TABS = ['projects', 'token', 'register', 'collection'];
 export function sectionOf(tab) {
   if (tab === 'dashboard' || tab === 'launch-token' || tab === 'launch-new') return 'dashboard';
   if (tab === 'stocks') return 'stocks';
@@ -175,6 +178,7 @@ export function BaseAppView() {
   else if (tab === 'staking') content = <Page width={WIDE}><StakingPage /></Page>;
   else if (tab === 'projects') content = <Page width={WIDE}><ProjectsPage /></Page>;
   else if (tab === 'register') content = <Page width={WIDE}><RegisterTokenPage /></Page>;
+  else if (tab === 'collection') content = <Page width={WIDE}><CollectionPage /></Page>;
   else if (tab === 'admin') content = <Page><AdminPage /></Page>;
   else if (tab === 'buy') {
     content = (

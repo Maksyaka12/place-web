@@ -10,7 +10,8 @@ import { Badge, Button, Card, EmptyState } from '../../themes/place/components/u
 import { QueryError, Skeleton, campaignPath } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount } from '../../place/hooks';
 import { useCampaigns } from '../../place/hooks';
-import { useHubStreams, useStakingPrograms } from '../hooks.js';
+import { useHubStreams, useStakingPrograms, useCollections } from '../hooks.js';
+import { POOL_DAYS, poolNumbers, collectionPath } from '../nft.js';
 import { compact, usd } from '../format.js';
 import { formatUtc } from '../../place/format';
 import { FilterMenu, PairLogos, PhaseBadge, CopyId, Withdrawal, aprText, num, vaultStats, PHASE_ORDER, useViewMode, amountText, conditionText, sym, SOURCE_BADGE } from './vaults.jsx';
@@ -141,10 +142,38 @@ function fromCampaign(c) {
   };
 }
 
-/** Every reward as hub items: streams (`launch/hub`), staking programs (`launch/staking`), snapshot campaigns. */
-export function hubItems(streams = [], programs = [], campaigns = []) {
+/** One NFT collection's 30-day holders pool (its mint economy) as a hub item. */
+function fromCollection(c) {
+  const r = c.rewardToken;
+  const p = poolNumbers(c.pool, r?.decimals);
+  return {
+    key: `n:${c.address}`,
+    id: c.address,
+    kind: 'collection',
+    type: 'nft',
+    source: 'collection',
+    placeToken: true,
+    placeCollection: true,
+    status: p.active ? 'live' : 'ended',
+    target: { address: c.address, symbol: c.symbol, name: c.name, contractURI: c.contractURI },
+    reward: r,
+    title: `Hold ${c.symbol || 'NFT'} NFT · Earn ${sym(r)}`,
+    to: collectionPath(c.address),
+    cells: [
+      { label: 'Per day', value: `${compact(p.perDay)} ${sym(r)}`, sub: `${compact(p.perNftPerDay)} per NFT` },
+      { label: 'Pool', value: `${compact(p.left)} ${sym(r)}`, sub: 'left to pay out' },
+      { label: 'Days', value: `${p.daysLeft} left`, sub: `of ${POOL_DAYS}, refilled by mints` },
+      { label: 'Condition', value: 'Hold 1 NFT, paid per NFT', small: true },
+    ],
+    table: [`${compact(p.perDay)} ${sym(r)} / day`, `${compact(p.left)} ${sym(r)}`, `${p.daysLeft} days left`, 'Hold 1 NFT'],
+    sort: { day: 0, pool: 0, apr: null, created: new Date(c.createdAt).getTime(), ends: p.endsAt ? p.endsAt.getTime() : Infinity },
+  };
+}
+
+/** Every reward as hub items: streams (`launch/hub`), staking programs (`launch/staking`), snapshot campaigns, NFT holder pools. */
+export function hubItems(streams = [], programs = [], campaigns = [], collections = []) {
   const officialOf = (p) => streams.some((s) => s.token.address === p.stakingToken.address && s.funder === p.creator && s.source === 'creator');
-  return [...streams.map(fromStream), ...programs.map((p) => fromStaking(p, officialOf)), ...campaigns.filter((c) => !c.hidden).map(fromCampaign)];
+  return [...streams.map(fromStream), ...programs.map((p) => fromStaking(p, officialOf)), ...campaigns.filter((c) => !c.hidden).map(fromCampaign), ...collections.map(fromCollection)];
 }
 
 function Tags({ it }) {
@@ -263,8 +292,12 @@ function HubList() {
   const streams = useHubStreams(address ? { account: address } : {});
   const staking = useStakingPrograms(address ? { account: address } : {});
   const snapshots = useCampaigns({ status: 'all', limit: 100 });
+  const pools = useCollections({ pool: '1', limit: 100 });
 
-  const items = useMemo(() => hubItems(streams.data?.streams, staking.data?.programs, snapshots.data?.campaigns), [streams.data, staking.data, snapshots.data]);
+  const items = useMemo(
+    () => hubItems(streams.data?.streams, staking.data?.programs, snapshots.data?.campaigns, pools.data?.collections),
+    [streams.data, staking.data, snapshots.data, pools.data]
+  );
 
   const counts = useMemo(() => {
     const out = { all: 0 };

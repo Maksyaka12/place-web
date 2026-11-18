@@ -46,3 +46,28 @@ export async function uploadImage(file) {
   const { uri } = await placeApi.pinImage({ data: await toBase64(blob), contentType: keep ? file.type : 'image/webp' });
   return uri;
 }
+
+/**
+ * An NFT image for a folder upload: fitted into `max`×`max` with its shape kept, as WebP (GIFs up to the limit stay
+ * as they are, animated). Returns { data (base64), contentType, ext, size }.
+ */
+export async function prepareNftImage(file, max = 1024) {
+  const problem = imageProblem(file);
+  if (problem) throw new Error(`${file?.name || 'File'}: ${problem}`);
+  let blob = file;
+  let contentType = file.type;
+  if (!(file.type === 'image/gif' && file.size <= MAX_BYTES)) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.88));
+    if (!blob) throw new Error('This browser could not convert the image');
+    contentType = 'image/webp';
+  }
+  if (blob.size > MAX_BYTES) throw new Error(`${file.name}: still over 600 KB after resizing; use a smaller image`);
+  return { data: await toBase64(blob), contentType, ext: contentType === 'image/gif' ? 'gif' : 'webp', size: blob.size };
+}

@@ -7,7 +7,8 @@ import { BadgeCheck, Boxes, Gift, Rocket, Search } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, PageHeader } from '../../themes/place/components/ui';
 import { QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useCampaigns } from '../../place/hooks';
-import { useHubStreams, useLaunchTokens, useStakingPrograms } from '../hooks.js';
+import { useHubStreams, useLaunchTokens, useStakingPrograms, useCollections, useProjects } from '../hooks.js';
+import { CollectionGrid, NftNotLive } from './CollectionParts.jsx';
 import { TokenArt, Stat, launchNewPath } from './parts.jsx';
 import { money } from './TokenCard.jsx';
 import { hubItems } from './HubPage.jsx';
@@ -28,6 +29,20 @@ const SORTS = [
   ['mcap', 'Market cap'],
   ['new', 'Newest'],
   ['campaigns', 'Most campaigns'],
+];
+const VIEWS = [
+  ['tokens', 'Tokens'],
+  ['collections', 'Collections'],
+];
+const COLLECTION_FILTERS = [
+  ['all', 'All'],
+  ['official', 'Official'],
+  ['pool', 'Paying holders'],
+];
+const COLLECTION_SORTS = [
+  ['new', 'Newest'],
+  ['minted', 'Most minted'],
+  ['pool', 'Biggest pool'],
 ];
 
 export const projectPath = (address) => `/token/${address}`;
@@ -112,7 +127,88 @@ function Seg({ label, options, value, onChange }) {
   );
 }
 
+/** A registered external token: no Place market data; its page has the campaigns and collections. */
+function RegisteredCard({ p, campaigns }) {
+  return (
+    <Link to={projectPath(p.token)} className="card card-hover pl-launch-card pl-projects-card" data-testid="project-card">
+      <div className="pl-launch-art">
+        <TokenArt token={{ symbol: p.symbol, name: p.name }} />
+        <div className="pl-launch-art-overlay" />
+        <div className="pl-launch-art-badges">
+          <Badge tone="accent">
+            <BadgeCheck size={11} /> Registered
+          </Badge>
+        </div>
+        <div className="pl-launch-art-title">
+          <span className="pl-launch-art-name">{p.name || p.symbol}</span>
+          <span className="pl-launch-art-symbol">${p.symbol}</span>
+        </div>
+      </div>
+      <div className="pl-launch-card-body">
+        <div className="pl-launch-card-mc">
+          <span className="pl-launch-card-mc-value mono">{p.liquidityUsd != null ? `$${compact(p.liquidityUsd)}` : '—'}</span>
+          <span className="pl-launch-card-mc-label">liquidity</span>
+        </div>
+        <div className="pl-launch-card-stats">
+          <Stat label="Campaigns" value={String(campaigns)} />
+        </div>
+        <div className="pl-launch-card-foot">
+          <span className="pl-launch-pair">{p.symbol}</span>
+          <span className="pl-launch-muted pl-launch-small">Launched elsewhere</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function CollectionsView() {
+  const [text, setText] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('new');
+  const q = useCollections({ sort, limit: 100, ...(filter === 'official' ? { official: '1' } : filter === 'pool' ? { pool: '1' } : {}), ...(text.trim() ? { q: text.trim() } : {}) });
+  const list = q.data?.collections || [];
+  if (q.data && !q.data.deployed) return <NftNotLive />;
+  const filtered = Boolean(text.trim() || filter !== 'all');
+  return (
+    <>
+      <div className="pl-projects-toolbar">
+        <label className="pl-launch-search">
+          <Search size={15} />
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Search collections by name or address" aria-label="Search collections" />
+        </label>
+        <div className="pl-projects-filters">
+          <Seg label="Collections" options={COLLECTION_FILTERS} value={filter} onChange={setFilter} />
+          <Seg label="Sort" options={COLLECTION_SORTS} value={sort} onChange={setSort} />
+        </div>
+      </div>
+      {q.isLoading ? (
+        <div className="pl-launch-grid">
+          <Skeleton count={5} height={300} />
+        </div>
+      ) : q.error ? (
+        <QueryError error={q.error} retry={q.refetch} />
+      ) : list.length ? (
+        <CollectionGrid list={list} />
+      ) : (
+        <Card className="pl-place-empty-card">
+          <EmptyState
+            icon={<Boxes size={28} />}
+            title={filtered ? 'No collections match' : 'No collections yet'}
+            description={filtered ? 'Clear a filter or the search to see more.' : 'NFT collections paired with Place tokens and registered tokens show up here.'}
+            action={
+              <Button as={Link} to="/launch/nft" variant="primary">
+                Launch NFT
+              </Button>
+            }
+          />
+        </Card>
+      )}
+    </>
+  );
+}
+
 export default function ProjectsPage() {
+  const [view, setView] = useState(() => (new URLSearchParams(window.location.search).get('view') === 'collections' ? 'collections' : 'tokens'));
   const [text, setText] = useState('');
   const [type, setType] = useState('all');
   const [category, setCategory] = useState('all');
@@ -124,6 +220,8 @@ export default function ProjectsPage() {
     ...(text.trim() ? { q: text.trim() } : {}),
   });
   const counts = useCampaignCounts();
+  const registered = useProjects({});
+  const external = (registered.data?.projects || []).filter((p) => !text.trim() || `${p.name} ${p.symbol} ${p.token}`.toLowerCase().includes(text.trim().toLowerCase()));
   const countOf = (t) => counts.get(String(t.address).toLowerCase()) || 0;
   const tokens = useMemo(() => {
     const list = (q.data?.tokens || []).filter((t) => type === 'all' || (tokenEconomy(t)?.type === 'economy') === (type === 'economy'));
@@ -147,42 +245,54 @@ export default function ProjectsPage() {
           </div>
         }
       />
-      <div className="pl-projects-toolbar">
-        <label className="pl-launch-search">
-          <Search size={15} />
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Search by name, ticker or address" aria-label="Search projects" />
-        </label>
-        <div className="pl-projects-filters">
-          <Seg label="Launch type" options={TYPES} value={type} onChange={setType} />
-          <Seg label="Pair" options={CATEGORIES} value={category} onChange={setCategory} />
-          <Seg label="Sort" options={SORTS} value={sort} onChange={setSort} />
-        </div>
+      <div className="pl-launch-tabs-scroll">
+        <Seg label="Projects or collections" options={VIEWS} value={view} onChange={setView} />
       </div>
-      {q.isLoading ? (
-        <div className="pl-launch-grid">
-          <Skeleton count={5} height={300} />
-        </div>
-      ) : q.error ? (
-        <QueryError error={q.error} retry={q.refetch} />
-      ) : tokens.length ? (
-        <div className="pl-launch-grid">
-          {tokens.map((t) => (
-            <ProjectCard key={t.address} t={t} campaigns={countOf(t)} />
-          ))}
-        </div>
+      {view === 'collections' ? (
+        <CollectionsView />
       ) : (
-        <Card className="pl-place-empty-card">
-          <EmptyState
-            icon={<Boxes size={28} />}
-            title={q.data?.tokens?.length || text.trim() ? 'No projects match' : 'No projects yet'}
-            description={q.data?.tokens?.length || text.trim() ? 'Clear a filter or the search to see more projects.' : 'Projects appear here when tokens launch on Place or their creators register them.'}
-            action={
-              <Button as={Link} to={launchNewPath()} variant="primary">
-                Launch token
-              </Button>
-            }
-          />
-        </Card>
+        <>
+          <div className="pl-projects-toolbar">
+            <label className="pl-launch-search">
+              <Search size={15} />
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Search by name, ticker or address" aria-label="Search projects" />
+            </label>
+            <div className="pl-projects-filters">
+              <Seg label="Launch type" options={TYPES} value={type} onChange={setType} />
+              <Seg label="Pair" options={CATEGORIES} value={category} onChange={setCategory} />
+              <Seg label="Sort" options={SORTS} value={sort} onChange={setSort} />
+            </div>
+          </div>
+          {q.isLoading ? (
+            <div className="pl-launch-grid">
+              <Skeleton count={5} height={300} />
+            </div>
+          ) : q.error ? (
+            <QueryError error={q.error} retry={q.refetch} />
+          ) : tokens.length || (type === 'all' && category !== 'stocks' && external.length) ? (
+            <div className="pl-launch-grid">
+              {tokens.map((t) => (
+                <ProjectCard key={t.address} t={t} campaigns={countOf(t)} />
+              ))}
+              {type === 'all' &&
+                category !== 'stocks' &&
+                external.map((p) => <RegisteredCard key={p.token} p={p} campaigns={counts.get(p.token) || 0} />)}
+            </div>
+          ) : (
+            <Card className="pl-place-empty-card">
+              <EmptyState
+                icon={<Boxes size={28} />}
+                title={q.data?.tokens?.length || text.trim() ? 'No projects match' : 'No projects yet'}
+                description={q.data?.tokens?.length || text.trim() ? 'Clear a filter or the search to see more projects.' : 'Projects appear here when tokens launch on Place or their creators register them.'}
+                action={
+                  <Button as={Link} to={launchNewPath()} variant="primary">
+                    Launch token
+                  </Button>
+                }
+              />
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

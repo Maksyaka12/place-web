@@ -19,6 +19,8 @@
 //   GET launch/profile  ?address | ?addresses=a,b          creator profiles
 //   POST launch/profile {address, profile, issuedAt, signature}   save a profile signed by its wallet
 //   GET launch/fund-quote, launch/staking, launch/staking/position   0.2.0 economy (./economy.js)
+//   GET launch/collections, launch/collection, launch/collection/holders, launch/nft/*   NFT launchpad (./nft.js)
+//   GET launch/projects, launch/projects/check, POST launch/projects/register   Register token (./projects.js)
 //
 // Reads come from the indexer's tables. Before answering, market endpoints let the indexer catch up with the
 // chain (deps.refresh, at most every few seconds), so trades show up seconds after they land.
@@ -40,6 +42,8 @@ import { ensureTokenMeta } from '../place/tokenMeta.js';
 import { retry } from '../place/chain.js';
 import { quoteUsd } from './prices.js';
 import { STOCKS_ROUTES } from './stocks.js';
+import { NFT_ROUTES } from './nft.js';
+import { PROJECT_ROUTES } from './projects.js';
 import { pairCategory, PAIR_CATEGORIES } from '../../../src/launch/pairs.js';
 import { cleanProfile, profileMessage, PROFILE_SIGNATURE_MAX_AGE_MS } from '../../../src/launch/profile.js';
 
@@ -66,6 +70,8 @@ export const LAUNCH_ROUTES = {
   ...HUB_ROUTES,
   ...STOCKS_ROUTES,
   ...KEEPER_ROUTES,
+  ...NFT_ROUTES,
+  ...PROJECT_ROUTES,
 };
 
 function launchChain(q) {

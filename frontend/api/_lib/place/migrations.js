@@ -678,4 +678,125 @@ create table launch_epoch_blocks (
 );
 `,
   },
+  {
+    name: '009_nft_launch',
+    sql: `
+-- Collections of the NFT launchpad (PlaceNftFactory 0.3.1): the settings read at creation, kept current from the
+-- collection's own events, and running totals. token = the pair token (null for a free collection without one),
+-- reward_token = what holders are paid in (0x0 = ETH).
+create table nft_launch_collections (
+  chain_id        integer not null,
+  address         text    not null,
+  factory         text    not null,
+  creator         text    not null,
+  owner           text    not null,
+  token           text,
+  reward_token    text    not null,
+  official        boolean not null,
+  kind            text    not null check (kind in ('unique', 'edition')),
+  idx             integer not null,
+  name            text,
+  symbol          text,
+  contract_uri    text,
+  base_uri        text,
+  uri_suffix      text,
+  max_supply      integer not null default 0,
+  max_per_wallet  integer not null default 0,
+  mint_start      bigint  not null default 0,
+  mint_end        bigint  not null default 0,
+  mint_price      numeric(78,0) not null default 0,
+  token_payments  boolean not null default false,
+  royalty_bps     integer not null default 0,
+  creator_bps     integer not null,
+  holders_bps     integer not null,
+  burn_bps        integer not null,
+  launch_pool     text,
+  metadata_frozen boolean not null default false,
+  total_minted    integer not null default 0,
+  paid_eth        numeric(78,0) not null default 0,
+  paid_token      numeric(78,0) not null default 0,
+  holders_funded  numeric(78,0) not null default 0,
+  holders_claimed numeric(78,0) not null default 0,
+  burned          numeric(78,0) not null default 0,
+  reward_rate     numeric(78,0) not null default 0,
+  period_finish   bigint  not null default 0,
+  last_mint_at    timestamptz,
+  created_block   bigint  not null,
+  created_tx      text    not null,
+  created_at      timestamptz not null,
+  primary key (chain_id, address)
+);
+create index nft_launch_collections_token on nft_launch_collections (chain_id, token);
+create index nft_launch_collections_creator on nft_launch_collections (chain_id, creator);
+
+-- Every NFT of those collections and its current owner (from ERC-721 Transfer).
+create table nft_launch_items (
+  chain_id   integer not null,
+  collection text    not null,
+  token_id   numeric(78,0) not null,
+  owner      text    not null,
+  minted_at  timestamptz not null,
+  primary key (chain_id, collection, token_id)
+);
+create index nft_launch_items_owner on nft_launch_items (chain_id, owner);
+
+create table nft_launch_mints (
+  chain_id   integer not null,
+  block      bigint  not null,
+  log_index  integer not null,
+  collection text    not null,
+  minter     text    not null,
+  first_id   numeric(78,0) not null,
+  quantity   integer not null,
+  asset      text    not null,
+  paid       numeric(78,0) not null,
+  tx         text    not null,
+  at         timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index nft_launch_mints_collection on nft_launch_mints (chain_id, collection, block);
+create index nft_launch_mints_minter on nft_launch_mints (chain_id, minter);
+
+-- The economy log: RevenueSplit, HoldersFunded, HoldersConverted, ConversionDeferred, HoldersClaimed, Paid,
+-- TokensBurned. account = the claimer (HoldersClaimed), data = the other fields as JSON.
+create table nft_launch_events (
+  chain_id   integer not null,
+  block      bigint  not null,
+  log_index  integer not null,
+  collection text    not null,
+  kind       text    not null,
+  account    text,
+  asset      text,
+  amount     numeric(78,0),
+  data       text,
+  tx         text    not null,
+  at         timestamptz not null,
+  primary key (chain_id, block, log_index)
+);
+create index nft_launch_events_collection on nft_launch_events (chain_id, collection, block);
+create index nft_launch_events_account on nft_launch_events (chain_id, account);
+
+-- Register token: an external token whose creator proved it (owner() or a known launchpad's admin) and signed with
+-- that wallet. status: verified (rights checked onchain and liquidity at least the minimum) or review (Place checks
+-- by hand). Verified tokens are projects: a project page, campaigns and an official collection.
+create table project_registrations (
+  chain_id      integer not null,
+  token         text    not null,
+  creator       text    not null,
+  method        text    not null check (method in ('owner', 'admin', 'manual')),
+  status        text    not null check (status in ('verified', 'review', 'rejected')),
+  name          text,
+  symbol        text,
+  decimals      integer,
+  liquidity_usd double precision,
+  note          text,
+  signature     text    not null,
+  issued_at     timestamptz not null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  primary key (chain_id, token)
+);
+create index project_registrations_creator on project_registrations (chain_id, creator);
+`,
+  },
 ];

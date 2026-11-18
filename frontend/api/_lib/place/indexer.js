@@ -1,4 +1,4 @@
-// Indexer: PlaceHub, NftFactory and Place Launch (../launch/indexer.js) → database. Two layers:
+// Indexer: PlaceHub, NftFactory, Place Launch (../launch/indexer.js) and the NFT launchpad (../launch/nft.js) → database. Two layers:
 // 1. indexEvents: event logs in block order (creation, rules, roots, claims, …), with a cursor. Logs come
 //    from a node that serves wide eth_getLogs ranges (Alchemy's free tier allows only 10 blocks); the range
 //    shrinks on its own when a node refuses it.
@@ -12,6 +12,7 @@ import { NETWORKS, retry } from './chain.js';
 import { launchStartBlock } from '../../../src/launch/deployments.js';
 import { acquireLease, releaseLease } from './snapshotJob.js';
 import { launchStaticAddresses, collectLaunchLogs, insertFreshTokens, applyLaunchLog } from '../launch/indexer.js';
+import { nftStaticAddresses, nftStartBlock, collectNftLogs, applyNftLog } from '../launch/nft.js';
 
 const EVENTS_ABI = [...PLACE_HUB_ABI, ...NFT_FACTORY_ABI].filter((x) => x.type === 'event');
 const STAGES = { 1: 'open', 2: 'cancelled', 3: 'refunded', 4: 'finalized' };
@@ -69,9 +70,10 @@ export async function indexEvents({
   const hubAddresses = [...d.hubs.map((h) => lower(h.address)), lower(d.nftFactory.address)];
   // One cursor for the hub and the launchpad. Its key lists the static addresses, so adding a contract
   // re-reads history from the earliest start block (every write is idempotent).
-  const addresses = [...hubAddresses, ...launchStaticAddresses(chainId)];
+  const addresses = [...hubAddresses, ...launchStaticAddresses(chainId), ...nftStaticAddresses(chainId)];
   const hubSet = new Set(hubAddresses);
-  const startBlock = [...d.hubs.map((h) => h.startBlock), d.nftFactory.startBlock, ...(launchStart != null ? [launchStart] : [])].reduce((a, b) => (a < b ? a : b));
+  const nftStart = nftStartBlock(chainId);
+  const startBlock = [...d.hubs.map((h) => h.startBlock), d.nftFactory.startBlock, ...(launchStart != null ? [launchStart] : []), ...(nftStart != null ? [nftStart] : [])].reduce((a, b) => (a < b ? a : b));
   const key = cursorKey(addresses);
   const rows = await db.query('select last_block::text as b from indexer_cursors where chain_id = $1 and contract = $2', [chainId, key]);
   let cursor = rows.length ? BigInt(rows[0].b) : startBlock - 1n;
@@ -87,23 +89,26 @@ export async function indexEvents({
     const toBlock = fromBlock + range - 1n < head ? fromBlock + range - 1n : head;
     let logs;
     let launchPart;
+    let nftPart;
     try {
       logs = await getLogsChunked(client, addresses, fromBlock, toBlock);
       launchPart = await collectLaunchLogs({ db, client, chainId, fromBlock, toBlock, staticLogs: logs });
+      nftPart = await collectNftLogs({ db, client, chainId, fromBlock, toBlock, staticLogs: logs });
     } catch (e) {
       if (range <= minRange) throw e;
       range = range / 4n > minRange ? range / 4n : minRange; // the node refused the range: ask for less
       continue;
     }
     const hubLogs = parseEventLogs({ abi: EVENTS_ABI, logs: logs.filter((l) => hubSet.has(lower(l.address))), strict: false });
-    const parsed = [...hubLogs, ...launchPart.logs].sort((a, b) =>
+    const parsed = [...hubLogs, ...launchPart.logs, ...nftPart.logs].sort((a, b) =>
       a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1
     );
     const times = await blockTimes(client, parsed);
     await db.tx(async (q) => {
       if (launchPart.ctx) await insertFreshTokens(q, launchPart.ctx);
       for (const log of parsed) {
-        if (log.launch) await applyLaunchLog(q, log, launchPart.ctx);
+        if (log.nft) await applyNftLog(q, log, nftPart.ctx);
+        else if (log.launch) await applyLaunchLog(q, log, launchPart.ctx);
         else await applyEvent(q, chainId, log, times);
       }
       await q(

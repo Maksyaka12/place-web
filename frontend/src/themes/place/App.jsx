@@ -41,6 +41,7 @@ const SHELL_PATHS = [
   '/staking',
   '/projects',
   '/projects/register',
+  '/collection/:address',
   '/launch/new',
   '/launch/nft',
   '/launch/token/:address',

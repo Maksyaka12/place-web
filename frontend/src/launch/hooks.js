@@ -31,6 +31,11 @@ export const launchKeys = {
   hub: (q) => ['place', PLACE_CHAIN_ID, 'launch', 'hub', q],
   hubStream: (id, a) => ['place', PLACE_CHAIN_ID, 'launch', 'hub-stream', id, lc(a) ?? null],
   hubAsset: (a, acc) => ['place', PLACE_CHAIN_ID, 'launch', 'hub-asset', lc(a), lc(acc) ?? null],
+  collections: (q) => ['place', PLACE_CHAIN_ID, 'launch', 'collections', q],
+  collection: (a, acc) => ['place', PLACE_CHAIN_ID, 'launch', 'collection', lc(a), lc(acc) ?? null],
+  nftAccount: (a) => ['place', PLACE_CHAIN_ID, 'launch', 'nft-account', lc(a)],
+  nftPairs: () => ['place', PLACE_CHAIN_ID, 'launch', 'nft-pairs'],
+  projects: (q) => ['place', PLACE_CHAIN_ID, 'launch', 'projects', q],
 };
 
 export const launchD = () => launchDeployment(PLACE_CHAIN_ID);
@@ -265,4 +270,46 @@ export function useHubAsset(address, account) {
     staleTime: 30_000,
     retry: 0,
   });
+}
+
+/** NFT launchpad collections; `data.deployed` is false before the 0.3.1 deploy. */
+export function useCollections(q = {}, options = {}) {
+  return useQuery({
+    queryKey: launchKeys.collections(q),
+    queryFn: ({ signal }) => launchApi.collections(q, signal),
+    placeholderData: keepPreviousData,
+    refetchInterval: 20_000,
+    ...options,
+  });
+}
+
+export function useCollection(address, account) {
+  return useQuery({
+    queryKey: launchKeys.collection(address, account),
+    queryFn: ({ signal }) => launchApi.collection(address, account, signal),
+    enabled: Boolean(address),
+    refetchInterval: 10_000,
+    // A collection created seconds ago may not be indexed yet: keep asking for a while.
+    retry: (n, e) => (e?.status === 404 ? n < 8 : n < 1),
+    retryDelay: 3000,
+  });
+}
+
+export function useNftAccount(account, options = {}) {
+  return useQuery({
+    queryKey: launchKeys.nftAccount(account),
+    queryFn: ({ signal }) => launchApi.nftAccount(account, signal),
+    enabled: Boolean(account),
+    refetchInterval: 20_000,
+    ...options,
+  });
+}
+
+export function useNftPairs() {
+  return useQuery({ queryKey: launchKeys.nftPairs(), queryFn: ({ signal }) => launchApi.nftPairs(signal), staleTime: 60_000 });
+}
+
+/** Registered external projects (verified only, unless filtered by token or creator). */
+export function useProjects(q = {}, options = {}) {
+  return useQuery({ queryKey: launchKeys.projects(q), queryFn: ({ signal }) => launchApi.projects(q, signal), staleTime: 30_000, ...options });
 }

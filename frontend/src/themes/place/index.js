@@ -11,6 +11,7 @@ import './styles/docs.css';
 import './styles/place.css';
 import './styles/launch.css';
 import './styles/rewards.css';
+import './styles/collections.css';
 import './styles/based.css';
 
 export default App;

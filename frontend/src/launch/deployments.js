@@ -34,6 +34,15 @@ export const LAUNCH_DEPLOYMENTS = {
     b20Factory: '0xb20f000000000000000000000000000000000000',
     quotes: { eth: '0x0000000000000000000000000000000000000000', usdc: '0x036cbd53842c5426634e7929541ec2318f3dcf7e' },
     launchRules: [],
+    // NFT launchpad 0.3.1 (PlaceNftFactory, its PlaceNftSwapper and PlacePriceGuard). Not deployed yet: the NFT pages
+    // show a "coming to Base Sepolia" state until the factory, swapper, guard and start block below are filled in.
+    nft: {
+      version: '0.3.1-testnet',
+      startBlock: null,
+      factory: null,
+      swapper: null,
+      priceGuard: null,
+    },
     legacy: [
       {
         version: '0.2.0-testnet',
@@ -140,6 +149,12 @@ export function deployedReleases(chainId) {
 export function currentDeployed(chainId) {
   const d = launchDeployment(chainId);
   return Boolean(d && d.deployed !== false && d.factory);
+}
+
+/** The NFT launchpad of a chain when it is deployed (factory and start block set), else null. */
+export function nftDeployment(chainId) {
+  const n = launchDeployment(chainId)?.nft;
+  return n && n.factory && n.startBlock != null ? n : null;
 }
 
 /** Static contracts whose events the shared indexer cursor reads (tokens and vaults are added as found). */
