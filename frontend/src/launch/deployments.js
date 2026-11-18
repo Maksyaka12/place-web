@@ -9,22 +9,23 @@
 export const LAUNCH_DEPLOYMENTS = {
   84532: {
     name: 'Base Sepolia',
-    // 0.3.0: Standard / Economy launches, five baskets, PlaceRewardsDistributor and PlaceCommunityVault.
-    // Deployed 2026-11-16, blocks 59718515–59718596.
-    version: '0.3.0-testnet',
-    startBlock: 59718515n,
-    factory: '0x5ac1d5bf12017502242d45ae9f519dedce15e453',
-    hook: '0x228f6dc153a6a164591b240941b819acf8862acc',
-    feeEscrow: '0x892c643a63de6e7b9b694bd10b5d4304d8e68ea4',
-    creatorVaultImplementation: '0xf7c91c7642fffc8131c60a78685d6741a2539a98',
-    communityVaultImplementation: '0xc2bae2cd4c26ce46860fd7749dec0adacad083dc',
-    rewardsDistributor: '0x793da842a6c43a0429b996b97a03246771eca6ed',
+    // 0.3.1: 0.3.0 launches plus community vaults that fund NFT holder campaigns and buy back and burn, and the
+    // NFT launchpad. Deployed 2026-11-18, blocks 60440625–60440716. The reward-token registry and staking of 0.3.0
+    // are reused.
+    version: '0.3.1-testnet',
+    startBlock: 60438060n,
+    factory: '0xdd38c9f751bc6bbb0330aab770c0bc0d53c69873',
+    hook: '0x2ffc9585096f98fe675d85b5c74144590af7eacc',
+    feeEscrow: '0xad76d5828336f5b1a814c6326c7c9a4c1d2fdcd0',
+    creatorVaultImplementation: '0xeba25508d2f985f80e665f4bae1c07c1878fe59a',
+    communityVaultImplementation: '0x9c05b6a1f37a9db82b47ccfdcde7820e2eb8bee4',
+    rewardsDistributor: '0xc43ba7b756427f37073fbf8b3f71e990139c9518',
     rewardTokenRegistry: '0xf2941258d77903409dec6746a9668aa84d3899a0',
     staking: '0x693dd75b148a12c3d90935ea6354c5d1e2629283',
-    xRecipientRegistry: '0xd5ede8771fad4dbb1146a15213a8db37773a14ed',
-    launchBuyAdapter: '0x396f2875af9771b33f33d9a19bf97919737ff0fb',
-    announcementRegistry: '0x3e390ee17009b083d23420557822f90e0da86e87',
-    tokenDeployer: '0xdf75125cc16921aa7b61714fd1e5d143da8d7c66',
+    xRecipientRegistry: '0x6a61317ae1191380220578c9f70ad4de1708cc19',
+    launchBuyAdapter: '0xc49394cc621d255f66ba0b535192a02d356ad034',
+    announcementRegistry: '0xb68c1a4cf1bbc861203f860096578e46950885aa',
+    tokenDeployer: '0x26cd582fd24440b51ccfa8032cc695f313ec268d',
     // Chain infrastructure, the same for every release.
     poolManager: '0x05e73354cfdd6745c338b50bcfdfa3aa6fa03408',
     universalRouter: '0x492e6456d9528771018deb9e87ef7750ef184104',
@@ -34,16 +35,34 @@ export const LAUNCH_DEPLOYMENTS = {
     b20Factory: '0xb20f000000000000000000000000000000000000',
     quotes: { eth: '0x0000000000000000000000000000000000000000', usdc: '0x036cbd53842c5426634e7929541ec2318f3dcf7e' },
     launchRules: [],
-    // NFT launchpad 0.3.1 (PlaceNftFactory, its PlaceNftSwapper and PlacePriceGuard). Not deployed yet: the NFT pages
-    // show a "coming to Base Sepolia" state until the factory, swapper, guard and start block below are filled in.
+    // NFT launchpad 0.3.1 (PlaceNftFactory, its PlaceNftSwapper and PlacePriceGuard), deployed with the suite above.
     nft: {
       version: '0.3.1-testnet',
-      startBlock: null,
-      factory: null,
-      swapper: null,
-      priceGuard: null,
+      startBlock: 60438060n,
+      factory: '0xe5a54d2984f10ec21257c9c2491a54567c376322',
+      swapper: '0xdcfb2449e7f0562d064f71b83a2a5412168dbacc',
+      priceGuard: '0x3db045168ffbce897049edaa4701f7dd57e2a392',
     },
     legacy: [
+      {
+        version: '0.3.0-testnet',
+        deployed: true,
+        startBlock: 59718515n,
+        factory: '0x5ac1d5bf12017502242d45ae9f519dedce15e453',
+        hook: '0x228f6dc153a6a164591b240941b819acf8862acc',
+        feeEscrow: '0x892c643a63de6e7b9b694bd10b5d4304d8e68ea4',
+        creatorVaultImplementation: '0xf7c91c7642fffc8131c60a78685d6741a2539a98',
+        communityVaultImplementation: '0xc2bae2cd4c26ce46860fd7749dec0adacad083dc',
+        rewardsDistributor: '0x793da842a6c43a0429b996b97a03246771eca6ed',
+        rewardTokenRegistry: '0xf2941258d77903409dec6746a9668aa84d3899a0',
+        staking: '0x693dd75b148a12c3d90935ea6354c5d1e2629283',
+        xRecipientRegistry: '0xd5ede8771fad4dbb1146a15213a8db37773a14ed',
+        launchBuyAdapter: '0x396f2875af9771b33f33d9a19bf97919737ff0fb',
+        announcementRegistry: '0x3e390ee17009b083d23420557822f90e0da86e87',
+        tokenDeployer: '0xdf75125cc16921aa7b61714fd1e5d143da8d7c66',
+        hub: null,
+        launchRules: [],
+      },
       {
         version: '0.2.0-testnet',
         deployed: true,

@@ -13,7 +13,8 @@ import { runKeeper } from '../api/_lib/launch/keeper.js';
 import { previewTax, ratesPercent, resolveLaunchTax, PERCENTAGE_SCALE, EconomicsError } from '../api/_lib/launch/taxMath.js';
 import { LAUNCH_FACTORY_ABI, REWARDS_DISTRIBUTOR_ABI, COMMUNITY_VAULT_ABI, FEE_ESCROW_ABI } from '../src/launch/abi.js';
 import { predictLaunch } from '../src/launch/vanity.js';
-import { launchStartBlock, currentDeployed } from '../src/launch/deployments.js';
+import { launchStartBlock, currentDeployed, launchDeployment } from '../src/launch/deployments.js';
+import { rewardRegistry } from '../api/_lib/launch/rewards.js';
 import { logBuilder, fakeNode, freshDb, deploy030, undeploy030, V3, CUR, CHAIN, CREATOR, TRADER, DEAD, ETH, USDC, timeOf, B0, T0 } from './launchFixture.js';
 
 const e18 = 10n ** 18n;
@@ -78,7 +79,7 @@ test('predict before the 0.3.0 deploy: economics in contract format and the loca
   assert.equal(currentDeployed(CHAIN), false);
   const { db, get } = await apiOnly();
   await db.query(`insert into launch_quotes (chain_id, quote, decimals, start_tick, registered, revision, updated_block) values ($1, $2, 18, -200600, true, 1, 1), ($1, $3, 6, -400600, true, 1, 1)`, [CHAIN, ETH, USDC]);
-  await db.query(`insert into launch_reward_routes (chain_id, registry, from_token, to_token, hops, active, updated_block) values ($1, $2, $3, $4, '[]', true, 1)`, [CHAIN, CUR.rewardTokenRegistry, ETH, USDC]);
+  await db.query(`insert into launch_reward_routes (chain_id, registry, from_token, to_token, hops, active, updated_block) values ($1, $2, $3, $4, '[]', true, 1)`, [CHAIN, rewardRegistry(CHAIN), ETH, USDC]);
   const r = await get('launch/predict', { creator: CREATOR, kind: 'b20', quote: 'eth', name: 'Eco', symbol: 'ECO', ...ECONOMY_Q, rewardToken: USDC });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const b = r.body;
@@ -321,7 +322,7 @@ test('indexer 0.3.0: economics, tax credits per basket, trades and daily volumes
     assert.ok(launchStaticAddresses(CHAIN).includes(V3.rewardsDistributor) && launchStaticAddresses(CHAIN).includes(V3.feeEscrow));
     const { db, index } = await economySetup();
     const [e] = await db.query('select * from launch_economy where token = $1', [TOKEN]);
-    assert.equal(e.version, '0.3.0-testnet');
+    assert.equal(e.version, launchDeployment(CHAIN).version, 'the current 0.3.x release');
     assert.equal(e.launch_type, 'economy');
     assert.deepEqual([e.buy_tax_rate, e.sell_tax_rate, e.creator_share, e.holders_share, e.traders_share, e.burn_share, e.community_share].map(Number), [3e6, 5e6, 3e7, 3e7, 2e7, 1e7, 1e7]);
     assert.equal(String(e.min_holding), String(25_000n * e18));

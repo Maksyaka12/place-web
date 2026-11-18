@@ -145,7 +145,11 @@ function deployNft() {
   return () => Object.assign(n, saved);
 }
 
-test('before the 0.3.1 deploy: no NFT addresses, endpoints answer "not deployed" with empty lists', async () => {
+test('without NFT addresses: endpoints answer "not deployed" with empty lists', async (t) => {
+  const n = launchDeployment(CHAIN).nft;
+  const saved = { ...n };
+  Object.assign(n, { startBlock: null, factory: null, swapper: null, priceGuard: null });
+  t.after(() => Object.assign(n, saved));
   assert.equal(nftDeployment(CHAIN), null);
   const db = await freshDb();
   const deps = { db, client: () => ({}), now: () => 1_800_000_000 };
