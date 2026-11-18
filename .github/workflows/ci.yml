@@ -21,6 +21,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: Trace serverless functions like Vercel
+        run: npm run check:functions
 
   contracts:
     runs-on: ubuntu-latest

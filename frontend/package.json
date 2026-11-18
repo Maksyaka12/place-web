@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "node --test --experimental-test-module-mocks \"tests/*.test.js\"",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "check:functions": "node scripts/traceFunctions.mjs"
   },
   "dependencies": {
     "@base-org/account": "2.5.9",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.11",
+    "@vercel/nft": "1.11.7",
     "@vitejs/plugin-react": "^4.3.0",
     "eslint": "9.39.5",
     "eslint-plugin-react": "7.37.5",
