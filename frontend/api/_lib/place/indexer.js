@@ -65,11 +65,12 @@ async function inheritedCursor(db, chainId, addresses, startBlock, startsOf) {
     const old = r.contract.slice('events:'.length).split(',').filter(Boolean).map(lower);
     if (!old.length || !old.every((a) => wanted.has(a))) continue;
     const b = BigInt(r.b);
-    if (!best || b > best.b) best = { b, old: new Set(old) };
+    // `next` is set here, not in a declaration: Vercel's file tracer pre-evaluates `const x = a + 1n` and fails on BigInt.
+    if (!best || b > best.b) best = { b, next: b + 1n, old: new Set(old) };
   }
   if (!best) return startBlock - 1n;
   const starts = startsOf();
-  let from = best.b + 1n;
+  let from = best.next;
   for (const a of wanted) {
     if (best.old.has(a)) continue;
     const s = starts.get(a);
