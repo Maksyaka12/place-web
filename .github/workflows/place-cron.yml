@@ -1,6 +1,8 @@
-# Place indexer and snapshot service tick. Vercel Hobby allows a cron only once a day, so the
-# frequent tick comes from here: every 30 minutes (Actions minutes are free for this public repository). Snapshots have 72 h to publish, so this is plenty on testnet; on Vercel Pro the
-# schedule moves back to vercel.json (every minute) and this workflow can be removed.
+# Place cron tick (indexer, keeper, rewards publisher, snapshots): FALLBACK scheduler.
+# The main one is an external scheduler calling /api/place-cron?async=1 every 5 minutes (docs/CRON.md); Vercel
+# Hobby runs it once a day (vercel.json, 00:05 UTC). GitHub delays scheduled workflows a lot (in practice every
+# 8-16 hours), so this only covers the case where the external scheduler is down. Overlapping calls are safe: the
+# endpoint runs one tick at a time (lease) and answers { skipped } to the others.
 #
 # Needs in GitHub → Settings → Secrets and variables → Actions:
 #   secret   CRON_SECRET  the same value as CRON_SECRET in the Vercel project

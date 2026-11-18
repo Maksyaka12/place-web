@@ -10,6 +10,11 @@
 //                            holds at least the frozen minimum
 //   FeeEscrow.burn(token) is left to the users ("Burn tokens" on the token page).
 // 0.2.0 creator vaults (legacy, still live): process() when due and startDefaultCampaign() after 30 days.
+// NFT launchpad 0.3.1 collections (./nftKeeper.js): buyback, processPending and payOut above the dust thresholds,
+// swaps only once PlacePriceGuard can price their route.
+//
+// closeStreams runs on the first tick after 00:00 UTC (once per distributor and UTC day, counted from keeper_runs),
+// so with a tick every few minutes the day's rewards are funded minutes after midnight.
 //
 // The keeper wallet (env PLACE_KEEPER_PRIVATE_KEY, a hot wallet with a little ETH for gas, separate from the
 // publisher) can only pay gas. Every call is dry-run first; a call whose gas estimate is above the cap is skipped.
@@ -25,6 +30,7 @@ import { NETWORKS, alchemyUrl, retry } from '../place/chain.js';
 import { reply, chainOf, iso } from '../place/http.js';
 import { revertReason } from './economy.js';
 import { releaseGeneration, EPOCH } from './indexer.js';
+import { runNftKeeper, nftKeeperConfig } from './nftKeeper.js';
 
 const ETH = '0x0000000000000000000000000000000000000000';
 const MIN_BURN_AMOUNT = 1_000n; // 0.2.0 PlaceCreatorVault.MIN_BURN_AMOUNT: smaller reserves are carried over
@@ -38,6 +44,7 @@ export function keeperConfig(env = process.env) {
     intervalS: Number(env.PLACE_KEEPER_INTERVAL_S || 86_400), // once a day per vault and action
     maxGas: BigInt(env.PLACE_KEEPER_MAX_GAS || 800_000), // per call (closeStreams: per stream in the batch)
     maxCalls: Number(env.PLACE_KEEPER_MAX_CALLS || 20), // per tick
+    nft: nftKeeperConfig(env),
   };
 }
 
@@ -126,13 +133,17 @@ export async function runKeeper({ db, client, wallet, chainId, now, config = kee
     done.push({ ...row, status: 'nothing', detail });
   }
 
-  // ── 0.3.0: close yesterday's epochs of every stream, one batch per distributor
+  // ── 0.3.0: close yesterday's epochs of every stream, one batch per distributor, on the first tick of the UTC day
   const current = Math.floor(now / EPOCH);
+  const dayStart = current * EPOCH;
   const lastClose = await lastRuns(db, chainId, 'close_streams');
   const distributors = deployedReleases(chainId).filter((r) => releaseGeneration(r.version) >= 3 && r.rewardsDistributor);
   for (const r of distributors) {
     if (outOfTime()) break;
-    if (!due(lastClose.get(r.rewardsDistributor), config.intervalS - 3_600)) continue; // a little slack so the daily run does not drift later
+    // Done today (success, or nothing to close): closeStreams of an already closed day only burns gas. A day that
+    // failed (reverted, gas cap, error) is tried again on the next tick.
+    const lastAt = lastClose.get(r.rewardsDistributor);
+    if (lastAt && new Date(lastAt).getTime() / 1000 >= dayStart) continue;
     const open = await db.query(
       `select stream_id from reward_streams where chain_id = $1 and distributor = $2 and start_epoch <= $3
          and coalesce(last_closed_epoch, start_epoch - 1) < least($3, case when epoch_count > 0 then start_epoch + epoch_count - 1 else $3 end)
@@ -199,6 +210,17 @@ export async function runKeeper({ db, client, wallet, chainId, now, config = kee
     else await attempt(row, { address: v.vault, abi: COMMUNITY_VAULT_ABI, functionName: 'startDefaultCampaign', args: [] });
   }
 
+  // ── NFT launchpad 0.3.1 collections: buyback, royalties, waiting swaps, payouts
+  let nft = { collections: 0 };
+  if (!outOfTime()) {
+    try {
+      nft = await runNftKeeper({ db, client, chainId, now, attempt, nothing, outOfTime, done }, config.nft ?? nftKeeperConfig({}));
+    } catch (e) {
+      nft = { error: e.message };
+      done.push({ vault: null, action: 'nft', status: 'error', detail: e.message });
+    }
+  }
+
   // ── 0.2.0 creator vaults: process() and default campaigns
   const v2versions = deployedReleases(chainId).filter((r) => releaseGeneration(r.version) === 2).map((r) => r.version);
   const vaults = v2versions.length
@@ -247,7 +269,7 @@ export async function runKeeper({ db, client, wallet, chainId, now, config = kee
       else await attempt({ ...row, action: 'default_campaign' }, call('startDefaultCampaign'));
     }
   }
-  return { vaults: vaults.length, communities: communities.length, distributors: distributors.length, calls: state.calls, done, keeper: wallet.address };
+  return { vaults: vaults.length, communities: communities.length, distributors: distributors.length, nft, calls: state.calls, done, keeper: wallet.address };
 }
 
 /** GET launch/keeper ?chain[&vault&limit] — the keeper's public log. */
