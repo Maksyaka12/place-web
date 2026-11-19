@@ -7,9 +7,27 @@ import { appendBuilderSuffix, DATA_SUFFIX } from './builderCode.js';
 /** User pressed reject / cancel in the wallet (EIP-1193 code 4001, or the wallet's own wording). */
 export const isWalletRejection = (e) => e?.code === 4001 || e?.cause?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '');
 
+/** Thrown when the wallet the site acts as is linked to the account but not connected in this browser. */
+export class WalletNotConnectedError extends Error {
+  constructor(address) {
+    super(address ? `Connect ${address.slice(0, 6)}…${address.slice(-4)} in your wallet, then try again` : 'Connect a wallet first');
+    this.name = 'WalletNotConnectedError';
+    this.address = address || null;
+  }
+}
+
+/**
+ * The connected wallet with this exact address. Never another one: falling back to whichever wallet is connected
+ * (for example the Privy embedded wallet while the user's own wallet is locked) would sign as a different account.
+ */
+export function connectedWallet(wallets, address) {
+  const wallet = address ? wallets?.find((w) => w.address?.toLowerCase() === address.toLowerCase()) : null;
+  if (!wallet) throw new WalletNotConnectedError(address);
+  return wallet;
+}
+
 export async function sendWalletTx({ wallets, address, to, data, value = 0n }) {
-  const wallet = wallets?.find((w) => w.address?.toLowerCase() === address?.toLowerCase()) || wallets?.[0];
-  if (!wallet) throw new Error('Wallet not connected');
+  const wallet = connectedWallet(wallets, address);
   const provider = await wallet.getEthereumProvider();
   const calldata = appendBuilderSuffix(data);
   const valueHex = '0x' + BigInt(value).toString(16);

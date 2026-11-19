@@ -1,13 +1,13 @@
 // React Query hooks over the Place API, IPFS reads and the transaction flow every Place action uses.
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { useWallets } from '@privy-io/react-auth';
+import { useWallets, useConnectWallet } from '@privy-io/react-auth';
 import { createWalletClient, custom, encodeFunctionData } from 'viem';
 import { placeApi, fetchIpfsJson } from './api.js';
 import { PLACE_CHAIN, PLACE_CHAIN_ID, placeClient } from './chain.js';
 import { usePlaceWallets } from '../hooks/usePlaceWallets';
 import { appendBuilderSuffix } from '../config/builderCode';
-import { isWalletRejection } from '../config/walletTx';
+import { isWalletRejection, connectedWallet, WalletNotConnectedError } from '../config/walletTx';
 
 const lc = (a) => (a ? String(a).toLowerCase() : a);
 
@@ -96,6 +96,7 @@ export function txErrorMessage(e) {
  */
 export function usePlaceTx({ onSuccess } = {}) {
   const { wallets } = useWallets();
+  const { connectWallet } = useConnectWallet();
   const { activeAddress } = usePlaceWallets();
   const queryClient = useQueryClient();
   const [state, setState] = useState({ status: 'idle', step: null, hash: null, error: null });
@@ -107,8 +108,7 @@ export function usePlaceTx({ onSuccess } = {}) {
       const list = Array.isArray(calls) ? calls : [calls];
       try {
         const first = list[0];
-        const wallet = wallets?.find((w) => w.address?.toLowerCase() === activeAddress?.toLowerCase()) || wallets?.[0];
-        if (!wallet) throw new Error('Connect a wallet first');
+        const wallet = connectedWallet(wallets, activeAddress);
         setState({ status: 'wallet', step: first.label || null, hash: null, error: null });
         if (Number(String(wallet.chainId || '').split(':').pop()) !== PLACE_CHAIN_ID) await wallet.switchChain(PLACE_CHAIN_ID);
         const provider = await wallet.getEthereumProvider();
@@ -135,11 +135,13 @@ export function usePlaceTx({ onSuccess } = {}) {
           reset();
           return null;
         }
-        setState({ status: 'error', step: null, hash: null, error: txErrorMessage(e) });
+        // The account's own wallet is not connected in this browser (locked extension, new tab): ask for it.
+        if (e instanceof WalletNotConnectedError && e.address) connectWallet({ suggestedAddress: e.address, description: e.message });
+        setState({ status: 'error', step: null, hash: null, error: e instanceof WalletNotConnectedError ? e.message : txErrorMessage(e) });
         return null;
       }
     },
-    [wallets, activeAddress, queryClient, onSuccess, reset]
+    [wallets, activeAddress, connectWallet, queryClient, onSuccess, reset]
   );
 
   return { ...state, busy: state.status === 'wallet' || state.status === 'pending', send, reset };

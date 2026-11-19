@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWallets } from '@privy-io/react-auth';
+import { connectedWallet } from '../../config/walletTx';
 import { isAddress, toHex } from 'viem';
 import { AlertTriangle, ArrowLeft, BadgeCheck, CheckCircle2, Clock, Info, Loader2, PenLine, Rocket, Search, XCircle } from 'lucide-react';
 import { Alert, Badge, Button, Card, PageHeader } from '../../themes/place/components/ui';
@@ -64,8 +65,7 @@ export default function RegisterTokenPage() {
   const register = async () => {
     setSign({ status: 'signing', error: null, result: null });
     try {
-      const wallet = wallets.find((w) => w.address?.toLowerCase() === account) || wallets[0];
-      if (!wallet) throw new Error('Connect your wallet first');
+      const wallet = connectedWallet(wallets, account);
       const issuedAt = new Date().toISOString();
       const message = registerMessage({ chainId: PLACE_CHAIN_ID, token, account, issuedAt });
       const provider = await wallet.getEthereumProvider();

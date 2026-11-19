@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallets } from '@privy-io/react-auth';
+import { connectedWallet } from '../../config/walletTx';
 import { toHex, isAddress } from 'viem';
 import { ArrowLeft, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock, Image as ImageIcon } from 'lucide-react';
 import { Button, Card, Badge, EmptyState, Alert } from '../../themes/place/components/ui';
@@ -109,8 +110,7 @@ function ProfileSettings({ address, profile }) {
     setState({ status: 'busy', error: null });
     try {
       const clean = cleanProfile(form);
-      const wallet = wallets.find((w) => w.address?.toLowerCase() === address) || wallets[0];
-      if (!wallet) throw new Error('Connect your wallet first');
+      const wallet = connectedWallet(wallets, address);
       const issuedAt = new Date().toISOString();
       const message = profileMessage({ address, profile: clean, issuedAt });
       const provider = await wallet.getEthereumProvider();

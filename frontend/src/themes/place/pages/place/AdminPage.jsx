@@ -14,7 +14,7 @@ import { PLACE_CHAIN_ID, placeClient, placeDeployment } from '../../../../place/
 import { PLACE_CONFIG_ABI } from '../../../../place/abi';
 import { moderationMessage, isPlaceAdmin } from '../../../../place/moderation';
 import { viewStatus } from '../../../../place/status';
-import { isWalletRejection } from '../../../../config/walletTx';
+import { isWalletRejection, connectedWallet } from '../../../../config/walletTx';
 import { formatToken, assetLabel } from '../../../../place/format';
 import { StatusBadge, AddressLink, ConnectButton, QueryError, Skeleton, campaignTitle, campaignPath } from './parts';
 
@@ -28,8 +28,7 @@ function useModerate() {
     const key = `${type}:${target}`;
     setState({ busy: key, error: null, done: null });
     try {
-      const wallet = wallets.find((w) => w.address?.toLowerCase() === address) || wallets[0];
-      if (!wallet) throw new Error('Connect the admin wallet first');
+      const wallet = connectedWallet(wallets, address);
       const issuedAt = new Date().toISOString();
       const admin = wallet.address.toLowerCase();
       const message = moderationMessage({ admin, chainId: PLACE_CHAIN_ID, action, type, target, issuedAt });
