@@ -386,7 +386,17 @@ async function getRewards({ query: q }, deps) {
   const account = addressOf(q.account, 'account');
   const token = q.token ? addressOf(q.token, 'token') : null;
   if (deps.refresh) await deps.refresh(chainId).catch(() => {});
-  return reply(200, { chainId, account, ...(await accountRewards(deps, chainId, account, { token })) }, 'no-store');
+  const today = token ? await accountToday(deps, chainId, account, token) : null;
+  return reply(200, { chainId, account, ...(await accountRewards(deps, chainId, account, { token })), today }, 'no-store');
+}
+
+/** Where the account stands today for one token: its indexed balance and its counted volume of the current UTC day. */
+async function accountToday(deps, chainId, account, token) {
+  const now = deps.now ? deps.now() : Math.floor(Date.now() / 1000);
+  const epoch = Math.floor(now / EPOCH);
+  const [bal] = await deps.db.query('select balance::text as balance from launch_balances where chain_id = $1 and token = $2 and account = $3', [chainId, token, account]);
+  const [vol] = await deps.db.query('select volume::text as volume from launch_trader_volume where chain_id = $1 and token = $2 and epoch = $3 and trader = $4', [chainId, token, epoch, account]);
+  return { epoch, balance: bal?.balance ?? '0', volume: vol?.volume ?? '0', closesAt: iso((epoch + 1) * EPOCH * 1000) };
 }
 
 // ─────────────────────────────── creator panel (0.3.0) ───────────────────────────────

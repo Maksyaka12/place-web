@@ -1,17 +1,19 @@
 // Launchpad home (/launch): live trades, the headline numbers, Trending now, and every launch as cards
-// with All / Crypto / Stocks tabs and Trending / Vol 24h / New / Liquidity sorting.
+// with All / Crypto / Stocks tabs, Trending / Vol 24h / New / Liquidity sorting and a Grid / Cards / Table view
+// (remembered per browser; the table sorts by any column).
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, ArrowRight, Flame, Zap, Sprout, Droplets, Search, Rocket, LayoutDashboard } from 'lucide-react';
+import { Plus, ArrowRight, Flame, Zap, Sprout, Droplets, Search, Rocket, LayoutDashboard, LayoutGrid, Rows3, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button, Card, Tile, EmptyState } from '../../themes/place/components/ui';
 import { QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useNow } from '../../place/hooks';
 import { isTestnet } from '../../place/chain';
 import { useLaunchStats, useLaunchTokens } from '../hooks.js';
 import { useLaunchLive, useLiveTokens } from '../live.js';
-import { TokenCard, money } from './TokenCard.jsx';
-import { TokenLogo, launchTokenPath, launchNewPath, consolePath } from './parts.jsx';
-import { usd, compact, age } from '../format.js';
+import { TokenCard, TokenRowCard, money } from './TokenCard.jsx';
+import { TokenLogo, Change, launchTokenPath, launchNewPath, consolePath } from './parts.jsx';
+import { useViewMode } from './vaults.jsx';
+import { usd, compact, age, price as priceText } from '../format.js';
 
 const PAGE = 24;
 
@@ -27,6 +29,78 @@ const SORTS = [
   { id: 'new', label: 'New', Icon: Sprout },
   { id: 'liquidity', label: 'Liquidity', Icon: Droplets },
 ];
+
+const VIEWS = [
+  ['grid', 'Grid', LayoutGrid],
+  ['cards', 'Cards', Rows3],
+  ['table', 'Table', TableIcon],
+];
+
+/** Sortable columns of the Table view: the value each sorts by (USD when the pair has a price, else the pair amount). */
+const COLUMNS = [
+  { id: 'mcap', label: 'Market cap', value: (t) => t.marketCapUsd ?? t.marketCap },
+  { id: 'price', label: 'Price', value: (t) => t.priceUsd ?? t.price },
+  { id: 'volume', label: 'Volume 24h', value: (t) => t.volume24hUsd ?? t.volume24h },
+  { id: 'liquidity', label: 'Liquidity', value: (t) => t.liquidity?.valueUsd ?? t.liquidity?.value },
+  { id: 'holders', label: 'Holders', value: (t) => t.holders },
+  { id: 'age', label: 'Age', value: (t) => -new Date(t.createdAt).getTime() },
+];
+
+function TokenTable({ tokens, now }) {
+  const [by, setBy] = useState(null);
+  const list = useMemo(() => {
+    if (!by) return tokens;
+    const col = COLUMNS.find((c) => c.id === by.id);
+    return [...tokens].sort((a, b) => ((Number(col.value(a)) || 0) - (Number(col.value(b)) || 0)) * (by.dir === 'asc' ? 1 : -1));
+  }, [tokens, by]);
+  const sortBy = (id) => setBy((cur) => (cur?.id === id ? (cur.dir === 'desc' ? { id, dir: 'asc' } : null) : { id, dir: 'desc' }));
+  return (
+    <div className="pl-schedule-card pl-launch-list">
+      <div className="pl-launch-list-row head">
+        <span>Token</span>
+        {COLUMNS.map((c) => {
+          const on = by?.id === c.id;
+          const Icon = on ? (by.dir === 'desc' ? ArrowDown : ArrowUp) : ArrowUpDown;
+          return (
+            <span key={c.id} className="num" aria-sort={on ? (by.dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
+              <button type="button" className={`pl-launch-list-sort ${on ? 'on' : ''}`.trim()} onClick={() => sortBy(c.id)}>
+                {c.label}
+                <Icon size={12} />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+      {list.map((t) => {
+        const q = t.quote?.symbol || '';
+        return (
+          <Link key={t.address} to={launchTokenPath(t.address)} className="pl-launch-list-row" data-testid="launch-card">
+            <span className="pl-launch-list-token">
+              <TokenLogo token={t} size={32} />
+              <span className="pl-launch-list-name">
+                <span className="pl-launch-strong pl-launch-ellipsis">{t.name}</span>
+                <span className="pl-launch-muted pl-launch-small">
+                  ${t.symbol} · {q}
+                </span>
+              </span>
+            </span>
+            <span className="num mono">
+              <span key={t.liveTick?.cursor} className={t.liveTick ? `pl-launch-flash ${t.liveTick.side}` : undefined}>
+                {money(t.marketCapUsd, t.marketCap, q)}
+              </span>
+              <Change value={t.change24h} className="pl-launch-list-change" />
+            </span>
+            <span className="num mono">{t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q)}</span>
+            <span className="num mono">{money(t.volume24hUsd, t.volume24h, q)}</span>
+            <span className="num mono">{money(t.liquidity?.valueUsd, t.liquidity?.value, q)}</span>
+            <span className="num mono">{compact(t.holders)}</span>
+            <span className="num mono pl-launch-muted">{age(t.createdAt, now)}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 function Metrics() {
   const { data: s, isLoading } = useLaunchStats();
@@ -104,6 +178,7 @@ export default function LaunchDashboard() {
   const [search, setSearch] = useState(urlQuery);
   useEffect(() => setSearch(urlQuery), [urlQuery]);
   const [pages, setPages] = useState(1);
+  const [view, pickView] = useViewMode('place_launch_view', VIEWS.map(([id]) => id));
 
   const set = (key, value, fallback) => {
     const next = new URLSearchParams(params);
@@ -160,6 +235,14 @@ export default function LaunchDashboard() {
               </button>
             ))}
           </div>
+          <div className="seg soft pl-launch-views" role="tablist" aria-label="View">
+            {VIEWS.map(([id, label, Icon]) => (
+              <button key={id} type="button" role="tab" aria-selected={view === id} aria-label={label} title={label} onClick={() => pickView(id)}>
+                <Icon size={14} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
           <label className="pl-launch-search">
             <Search size={16} />
             <input
@@ -184,11 +267,21 @@ export default function LaunchDashboard() {
         </div>
       ) : tokens.length ? (
         <>
-          <div className="pl-launch-grid">
-            {tokens.map((t) => (
-              <TokenCard key={t.address} t={t} now={now} />
-            ))}
-          </div>
+          {view === 'table' ? (
+            <TokenTable tokens={tokens} now={now} />
+          ) : view === 'cards' ? (
+            <div className="pl-launch-rowcards">
+              {tokens.map((t) => (
+                <TokenRowCard key={t.address} t={t} now={now} />
+              ))}
+            </div>
+          ) : (
+            <div className="pl-launch-grid">
+              {tokens.map((t) => (
+                <TokenCard key={t.address} t={t} now={now} />
+              ))}
+            </div>
+          )}
           {feed.data?.nextOffset != null && (
             <div className="pl-launch-more">
               <Button onClick={() => setPages((p) => p + 1)} disabled={feed.isFetching}>

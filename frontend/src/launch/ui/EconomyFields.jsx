@@ -76,7 +76,7 @@ function TaxSlider({ label, value, onChange }) {
 }
 
 /** The allocation as a ring: one arc per bucket, the total in the middle (with Reset in the form). */
-export function AllocationRing({ allocation, onReset, label = 'allocated', buckets = BUCKETS, total: shownTotal }) {
+export function AllocationRing({ allocation, onReset, label = 'allocated', buckets = BUCKETS, total: shownTotal, center }) {
   const r = 70;
   const c = 2 * Math.PI * r;
   let offset = 0;
@@ -95,7 +95,7 @@ export function AllocationRing({ allocation, onReset, label = 'allocated', bucke
         })}
       </svg>
       <div className="pl-econ-ring-center">
-        <span className="pl-econ-ring-total mono">{total}%</span>
+        <span className="pl-econ-ring-total mono">{center ?? `${total}%`}</span>
         <span className="pl-launch-muted pl-launch-small">{label}</span>
         {onReset && (
           <button type="button" className="pl-econ-reset" onClick={onReset}>

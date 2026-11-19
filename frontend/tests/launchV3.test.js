@@ -395,6 +395,14 @@ test('rewards publisher: daily holder and trader tables, cumulative Merkle roots
       assert.equal(x.claimable, x.cumulative);
     }
     assert.equal(r.body.totals[USDC], String(mine.reduce((s, x) => s + BigInt(x.claimable), 0n)));
+    assert.equal(r.body.today, null, 'today only with a token');
+    // With a token: where the wallet stands today (balance and the current UTC day's counted volume).
+    const one = await get('launch/rewards', { account: TRADER, token: TOKEN });
+    assert.equal(one.status, 200, JSON.stringify(one.body));
+    const [bal] = await db.query('select balance::text as b from launch_balances where chain_id = $1 and token = $2 and account = $3', [CHAIN, TOKEN, TRADER]);
+    assert.equal(one.body.today.balance, bal?.b ?? '0');
+    assert.match(one.body.today.volume, /^\d+$/);
+    assert.equal(one.body.today.closesAt, new Date((one.body.today.epoch + 1) * 86_400_000).toISOString());
     const tx = r.body.claimMany[0];
     assert.equal(tx.to, V3.rewardsDistributor);
     const call = decodeFunctionData({ abi: REWARDS_DISTRIBUTOR_ABI, data: tx.data });

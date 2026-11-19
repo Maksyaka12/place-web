@@ -123,13 +123,14 @@ export function FilterMenu({ label, value, options, onChange, anyLabel = 'Any' }
   );
 }
 
-/** Cards or table, remembered per browser. */
-export function useViewMode(key = 'place_vault_view') {
+/** A view mode (cards or table by default; the first of `modes` is the fallback), remembered per browser. */
+export function useViewMode(key = 'place_vault_view', modes = ['cards', 'table']) {
   const [view, setView] = useState(() => {
     try {
-      return localStorage.getItem(key) === 'table' ? 'table' : 'cards';
+      const v = localStorage.getItem(key);
+      return modes.includes(v) ? v : modes[0];
     } catch {
-      return 'cards';
+      return modes[0];
     }
   });
   const pick = (v) => {
