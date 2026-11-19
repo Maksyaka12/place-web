@@ -1,10 +1,11 @@
-// A launch token (/launch/token/:address), laid out like a trading terminal: the header, a stat row (market cap,
-// price, volume, liquidity, supply, holders, tax or fee, each with its value in the pair asset), the chart, the Info
-// block (creator, created, lifetime volume, creator and protocol revenue), the tabs and Disclosures; swap on the right.
-// Each release shows its own economics (`generation`: 1 = 0.1.0, 2 = 0.2.0, 3 = 0.3.0).
+// A launch token (/launch/token/:address): the header (logo, name, ticker, address with copy; the
+// pair chip, Tax for Economy tokens, the standard, Immutable or Editable), the stat row (each value with the pair
+// amount under it), the chart with its toolbar, Info (creator, created, trading fee for tokens without economy;
+// lifetime volume, creator and protocol revenue), the tabs and Disclosures; Swap on the right.
+// Each release shows its own economics (`generation`: 1 = 0.1.0, 2 = 0.2.0, 3 = 0.3.x).
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Globe, ExternalLink, Send, Rocket } from 'lucide-react';
+import { ArrowLeft, Globe, Send, Rocket, Maximize2, Minimize2 } from 'lucide-react';
 import { Card, Badge, EmptyState, Button } from '../../themes/place/components/ui';
 import { CopyAddress, AddressLink, QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useNow } from '../../place/hooks';
@@ -13,15 +14,22 @@ import { formatAmount, formatUtc, shortAddress } from '../../place/format';
 import { useLaunchToken, useCandles, useLaunchHolders, useProfile, useCollections } from '../hooks.js';
 import { CandleChart } from './CandleChart.jsx';
 import { SwapPanel } from './SwapPanel.jsx';
-import { TokenLogo, KindBadge, NewBadge, Change, launchPath, consolePath } from './parts.jsx';
+import { TokenLogo, PairChip, launchPath } from './parts.jsx';
 import { tokenEconomy, tradePct } from '../economy.js';
 import { money } from './TokenCard.jsx';
 import { EconomyTab, BurnTab, Disclosures, units } from './TokenEconomy.jsx';
-import { RewardsTab, StakingTab, NftTab, CampaignsTab, activeStaking } from './TokenRewards.jsx';
-import { useLaunchLive, useLiveToken, useLiveTrades, useLiveCandles, freshTrades, liveTradesOf } from '../live.js';
+import { RewardsTab, StakingTab, NftTab, CampaignsTab, useTokenCampaigns, activeStaking } from './TokenRewards.jsx';
+import { useLaunchLive, useLiveToken, useLiveTrades, useLiveCandles } from '../live.js';
 import { usd, price as priceText, compact, age } from '../format.js';
 
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
+/** The range buttons under the chart: how far back, and the candle that fits it. */
+const RANGES = [
+  ['3m', 90 * 86_400, '1d'],
+  ['1m', 30 * 86_400, '4h'],
+  ['5d', 5 * 86_400, '1h'],
+  ['1d', 86_400, '15m'],
+];
 
 /** The interval whose ~60 candles (what fits a phone) cover the token's whole life. */
 function defaultInterval(createdAt) {
@@ -73,25 +81,121 @@ function Links({ links }) {
   );
 }
 
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/**
+ * The chart card with its toolbar: interval, USD / PAIR, MarketCap / Price and fullscreen on top; the ranges and a
+ * UTC clock under it. Drawn by our own SVG CandleChart (no drawing tools or indicators).
+ */
 function Chart({ token }) {
   const [iv, setIv] = useState(() => defaultInterval(token.createdAt));
+  const [range, setRange] = useState(null);
+  const [inUsd, setInUsd] = useState(token.quote.usd != null);
+  const [mode, setMode] = useState('price');
+  const [full, setFull] = useState(false);
+  const card = useRef(null);
+  const now = useNow(1000);
   const { data, isLoading } = useCandles(token.address, iv);
   const candles = useLiveCandles(data?.candles || [], data?.indexedBlock, token.poolId, iv);
-  const inUsd = token.quote.usd != null;
+  const usdOk = token.quote.usd != null;
+  const usdOn = inUsd && usdOk;
+  // Market cap = price × the supply the API counts (market cap ÷ price), or the full supply.
+  const supply = token.price > 0 && token.marketCap > 0 ? token.marketCap / token.price : token.supply || 1e9;
+  const scale = (usdOn ? token.quote.usd : 1) * (mode === 'mcap' ? supply : 1);
+  useEffect(() => {
+    const on = () => setFull(document.fullscreenElement === card.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+  const toggleFull = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else card.current?.requestFullscreen?.();
+  };
+  const since = range ? Math.floor(now / 1000) - RANGES.find(([id]) => id === range)[1] : null;
+  const d = new Date(now);
   return (
-    <Card className="pl-launch-chart-card">
-      <div className="pl-launch-chart-head">
-        <span className="pl-launch-section-title">Price</span>
-        <div className="seg soft pl-launch-intervals" role="tablist" aria-label="Candle interval">
+    <div className="card pl-launch-chart-card" ref={card}>
+      <div className="pl-launch-chart-toolbar">
+        <select
+          className="pl-launch-chart-select mono"
+          value={iv}
+          aria-label="Candle interval"
+          onChange={(e) => {
+            setIv(e.target.value);
+            setRange(null);
+          }}
+        >
           {INTERVALS.map((i) => (
-            <button key={i} type="button" role="tab" aria-selected={iv === i} onClick={() => setIv(i)}>
+            <option key={i} value={i}>
               {i}
+            </option>
+          ))}
+        </select>
+        <span className="pl-launch-chart-sep" />
+        <span className="pl-launch-chart-toggle" role="group" aria-label="Currency">
+          <button type="button" aria-pressed={usdOn} disabled={!usdOk} onClick={() => setInUsd(true)}>
+            USD
+          </button>
+          <span>/</span>
+          <button type="button" aria-pressed={!usdOn} onClick={() => setInUsd(false)}>
+            {token.quote.symbol}
+          </button>
+        </span>
+        <span className="pl-launch-chart-sep" />
+        <span className="pl-launch-chart-toggle" role="group" aria-label="Value">
+          <button type="button" aria-pressed={mode === 'mcap'} onClick={() => setMode('mcap')}>
+            MarketCap
+          </button>
+          <span>/</span>
+          <button type="button" aria-pressed={mode === 'price'} onClick={() => setMode('price')}>
+            Price
+          </button>
+        </span>
+        <span className="pl-launch-chart-sep" />
+        <button type="button" className="pl-place-icon-btn" aria-label={full ? 'Exit fullscreen' : 'Fullscreen'} onClick={toggleFull}>
+          {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
+      </div>
+      <CandleChart
+        candles={candles}
+        interval={iv}
+        scale={scale}
+        unit={usdOn ? '$' : token.quote.symbol}
+        loading={isLoading}
+        since={since}
+        height={full ? Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 800) - 130) : undefined}
+      />
+      <div className="pl-launch-chart-foot">
+        <span className="pl-launch-chart-ranges" role="group" aria-label="Range">
+          {RANGES.map(([id, , interval]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={range === id}
+              onClick={() => {
+                setRange(id);
+                setIv(interval);
+              }}
+            >
+              {id}
             </button>
           ))}
-        </div>
+        </span>
+        <span className="mono pl-launch-muted pl-launch-small">
+          {pad2(d.getUTCHours())}:{pad2(d.getUTCMinutes())}:{pad2(d.getUTCSeconds())} UTC
+        </span>
       </div>
-      <CandleChart candles={candles} interval={iv} scale={inUsd ? token.quote.usd : 1} unit={inUsd ? '$' : token.quote.symbol} loading={isLoading} />
-    </Card>
+    </div>
+  );
+}
+
+/** "0.0₆1844 ETH" with "approx $0.0₄39" under it. */
+function PairAndUsd({ value, q, priceLike = false }) {
+  return (
+    <>
+      <span>{priceLike ? priceText(value, q.symbol) : `${compact(value, { decimals: 6 })} ${q.symbol}`}</span>
+      {q.usd != null && <span className="pl-launch-muted pl-launch-small">approx {usd(value * q.usd)}</span>}
+    </>
   );
 }
 
@@ -102,20 +206,26 @@ function Trades({ token, trades, now, empty }) {
   return (
     <div className="pl-launch-table">
       <div className="pl-launch-table-head pl-launch-trades-grid">
-        <span>Age</span>
+        <span>Time</span>
         <span>Type</span>
-        <span className="num">Price</span>
-        <span className="num">{token.symbol}</span>
-        <span className="num">{q.symbol}</span>
-        <span>Trader</span>
+        <span>Price</span>
+        <span>Amount</span>
+        <span>Value</span>
+        <span>Wallet</span>
       </div>
       {trades.map((t) => (
         <a key={t.cursor} className={`pl-launch-table-row pl-launch-trades-grid ${t.live ? `pl-launch-row-new ${t.side}` : ''}`.trim()} href={explorerTx(t.tx)} target="_blank" rel="noopener noreferrer">
-          <span className="mono pl-launch-muted">{age(t.at, now)}</span>
+          <span className="pl-launch-muted">{age(t.at, now)} ago</span>
           <span className={t.side === 'buy' ? 'pl-launch-buy' : 'pl-launch-sell'}>{t.side === 'buy' ? 'Buy' : 'Sell'}</span>
-          <span className="num mono">{q.usd != null ? usd(t.price * q.usd) : priceText(t.price)}</span>
-          <span className="num mono">{compact(t.tokens)}</span>
-          <span className="num mono">{compact(t.quote, { decimals: 4 })}</span>
+          <span className="mono pl-launch-cell-stack">
+            <PairAndUsd value={t.price} q={q} priceLike />
+          </span>
+          <span className="mono">
+            {compact(t.tokens)} {token.symbol}
+          </span>
+          <span className="mono pl-launch-cell-stack">
+            <PairAndUsd value={t.quote} q={q} />
+          </span>
           <span className="mono pl-launch-muted pl-launch-ellipsis">{t.trader ? shortAddress(t.trader) : '…'}</span>
         </a>
       ))}
@@ -123,7 +233,7 @@ function Trades({ token, trades, now, empty }) {
   );
 }
 
-const TAG_LABEL = { pool: 'Pool', hook: 'Hook', burned: 'Burned', vault: 'Creator vault', creator: 'Creator', staking: 'Staking' };
+const TAG_LABEL = { pool: 'Pool', hook: 'Hook', burned: 'Burned', vault: 'Creator vault', creator: 'Creator', staking: 'Staking', community: 'Community Pool', escrow: 'Fee escrow', rewards: 'Rewards' };
 
 function Holders({ token }) {
   const { data, isLoading } = useLaunchHolders(token.address);
@@ -160,29 +270,27 @@ const SIDES = [
 ];
 
 /**
- * The tabs under the Info block. Economy tokens: Transactions · Holders · Economy · Burn · Holder rewards · Trader
- * rewards (each only with its bucket) · Staking · NFT (with a paired collection) · Campaigns. Standard tokens skip
- * Burn and the reward tabs. The open tab lives in ?tab= so it survives a reload and can be linked.
+ * The tabs. Economy token: Transactions · Holders · Economy · Burn · Holder rewards · Trader rewards
+ * (each only with its bucket) · Staking · NFT (with a paired collection) · Campaigns (when there are any). Standard
+ * token: Transactions · Holders · Economy · Staking · NFT · Campaigns. The open tab lives in ?tab=.
  */
 function TokenTabs({ data, token, econ, now, collections }) {
   const [params, setParams] = useSearchParams();
   const [side, setSide] = useState('all');
   const trades = useLiveTrades(data.trades, data.indexedBlock, token.poolId, 50);
-  const fresh = freshTrades(liveTradesOf(token.poolId), data.indexedBlock);
-  const buys = data.activity24h.buys + fresh.filter((t) => t.side === 'buy').length;
-  const sells = data.activity24h.sells + fresh.filter((t) => t.side === 'sell').length;
+  const campaigns = useTokenCampaigns(data);
   const economy = econ?.type === 'economy';
   const legacy = token.generation < 3;
   const tabs = [
     { id: 'transactions', label: 'Transactions' },
-    { id: 'holders', label: 'Holders', count: token.holders },
+    { id: 'holders', label: 'Holders' },
     { id: 'economy', label: 'Economy' },
     (economy || (legacy && (econ?.shares.burn > 0 || token.economics?.buybackBps > 0 || data.burns?.count > 0))) && { id: 'burn', label: 'Burn' },
     economy && econ.shares.holders > 0 && { id: 'holders-rewards', label: 'Holder rewards' },
     economy && econ.shares.traders > 0 && { id: 'traders-rewards', label: 'Trader rewards' },
     { id: 'staking', label: 'Staking', count: activeStaking(data) || null },
-    collections.length > 0 && { id: 'nft', label: 'NFT', count: collections.length },
-    { id: 'campaigns', label: 'Campaigns' },
+    collections.length > 0 && { id: 'nft', label: 'NFT' },
+    campaigns.items.length > 0 && { id: 'campaigns', label: 'Campaigns' },
   ].filter(Boolean);
   const active = tabs.some((x) => x.id === params.get('tab')) ? params.get('tab') : 'transactions';
   const strip = useRef(null);
@@ -207,28 +315,24 @@ function TokenTabs({ data, token, econ, now, collections }) {
       <div className="pl-launch-tabs-scroll" ref={strip}>
         <div className="pl-launch-tabs pl-launch-token-tabs" role="tablist" aria-label="Token details">
           {tabs.map((x) => (
-            <button key={x.id} type="button" role="tab" aria-selected={active === x.id} onClick={() => open(x.id)}>
-              {x.label}
-              {x.count != null && <span className="pl-launch-tab-count mono">{compact(x.count)}</span>}
-            </button>
+            <span key={x.id} className="pl-launch-token-tab">
+              <button type="button" role="tab" aria-selected={active === x.id} onClick={() => open(x.id)}>
+                {x.label}
+              </button>
+              {x.id === 'transactions' && active === 'transactions' && (
+                <span className="pl-launch-side-filter" role="group" aria-label="Trade side">
+                  {SIDES.map(([id, label]) => (
+                    <button key={id} type="button" aria-pressed={side === id} onClick={() => setSide(id)}>
+                      {label}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </span>
           ))}
         </div>
       </div>
-      {active === 'transactions' && (
-        <div className="pl-launch-activity-head">
-          <div className="seg soft" role="tablist" aria-label="Trade side">
-            {SIDES.map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={side === id} onClick={() => setSide(id)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <span className="pl-launch-muted pl-launch-activity-sub">
-            24h: <span className="pl-launch-buy mono">{buys} buys</span> · <span className="pl-launch-sell mono">{sells} sells</span> · <span className="mono">{data.activity24h.traders}</span> traders
-          </span>
-        </div>
-      )}
-      <div role="tabpanel" className={active === 'transactions' || active === 'holders' ? '' : 'pl-launch-tab-panel'}>
+      <div role="tabpanel" className={active === 'transactions' || active === 'holders' ? 'pl-launch-tab-flush' : 'pl-launch-tab-panel'}>
         {active === 'transactions' && <Trades token={token} trades={shown} now={now} empty={side !== 'all' && trades.length > 0 ? side : null} />}
         {active === 'holders' && <Holders token={token} />}
         {active === 'economy' && <EconomyTab data={data} econ={econ} now={now} />}
@@ -237,41 +341,35 @@ function TokenTabs({ data, token, econ, now, collections }) {
         {active === 'traders-rewards' && <RewardsTab data={data} econ={econ} kind="traders" now={now} />}
         {active === 'staking' && <StakingTab data={data} />}
         {active === 'nft' && <NftTab token={token} collections={collections} />}
-        {active === 'campaigns' && <CampaignsTab data={data} />}
+        {active === 'campaigns' && <CampaignsTab data={data} campaigns={campaigns} />}
       </div>
     </Card>
   );
 }
 
-/** A value in USD with the same value in the pair asset under it (or the pair value alone without a USD price). */
+/** A USD value's pair amount for the line under it ("178.78 TTWO"); null without a USD price. */
 function pairSub(valueUsd, value, q, decimals = 4) {
   return valueUsd != null && value != null ? `${compact(value, { decimals })} ${q.symbol}` : null;
 }
 
-/** The stat row under the header: market cap, price, volume, liquidity, supply, holders and the tax or fee. */
+/** The stat row under the header. Buy / sell tax only for Economy tokens. */
 function Stats({ token: t, econ }) {
   const q = t.quote;
-  const economy = econ?.type === 'economy';
-  const supply = t.supply || 1e9;
-  const fee = !econ ? { label: 'Trading fee', value: '1%', sub: 'on every trade' } : economy ? { label: 'Buy / sell tax', value: `${econ.buyTax}% / ${econ.sellTax}%`, sub: `after Place ${tradePct(econ.perTrade.buy.rest)} / ${tradePct(econ.perTrade.sell.rest)}` } : { label: 'Trading fee', value: tradePct(econ.buyTax), sub: 'on every buy and sell' };
   const items = [
     { label: 'Market cap', value: money(t.marketCapUsd, t.marketCap, q.symbol), sub: pairSub(t.marketCapUsd, t.marketCap, q) },
-    { label: 'Token price', value: t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q.symbol), sub: t.priceUsd != null ? priceText(t.price, q.symbol) : null, change: t.change24h },
-    { label: 'Volume 24h', value: money(t.volume24hUsd, t.volume24h, q.symbol), sub: pairSub(t.volume24hUsd, t.volume24h, q) ?? `${t.trades24h} trades` },
-    { label: 'Pool liquidity', value: money(t.liquidity.valueUsd, t.liquidity.value, q.symbol), sub: `${compact(t.liquidity.quote, { decimals: 4 })} ${q.symbol} + ${compact(t.liquidity.token)} ${t.symbol}` },
-    { label: 'Total supply', value: compact(supply), sub: t.burned > 0 ? `${compact(t.burned)} burned` : 'Fixed, no minting' },
-    { label: 'Holders', value: compact(t.holders), sub: `${compact(t.trades)} trades` },
-    { label: fee.label, value: fee.value, sub: fee.sub },
-  ];
+    { label: 'Token price', value: t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q.symbol), sub: t.priceUsd != null ? priceText(t.price, q.symbol) : null },
+    { label: 'Volume 24h', value: money(t.volume24hUsd, t.volume24h, q.symbol), sub: pairSub(t.volume24hUsd, t.volume24h, q) },
+    { label: 'Pool liquidity', value: money(t.liquidity.valueUsd, t.liquidity.value, q.symbol), sub: pairSub(t.liquidity.valueUsd, t.liquidity.value, q) },
+    { label: 'Total supply', value: compact(t.supply || 1e9) },
+    { label: 'Holders', value: compact(t.holders) },
+    econ?.type === 'economy' && { label: 'Buy / sell tax', value: `${econ.buyTax}% / ${econ.sellTax}%` },
+  ].filter(Boolean);
   return (
     <dl className="pl-launch-stats">
       {items.map((s) => (
         <div key={s.label}>
           <dt>{s.label}</dt>
-          <dd className="mono pl-launch-stats-value">
-            {s.value}
-            {s.change != null && <Change value={s.change} className="pl-launch-stats-change" />}
-          </dd>
+          <dd className="mono pl-launch-stats-value">{s.value}</dd>
           {s.sub && <dd className="mono pl-launch-stats-sub">{s.sub}</dd>}
         </div>
       ))}
@@ -279,8 +377,8 @@ function Stats({ token: t, econ }) {
   );
 }
 
-/** The Info block under the chart: creator, created, lifetime volume, creator and protocol revenue. */
-function Info({ data, token: t, now }) {
+/** Info: creator, created (and the trading fee for tokens without economy); lifetime volume and revenue. */
+function Info({ data, token: t, econ, now }) {
   const { data: prof } = useProfile(t.creator);
   const name = prof?.profile?.name;
   const q = t.quote;
@@ -294,8 +392,9 @@ function Info({ data, token: t, now }) {
     r && { label: 'Creator revenue', ...rev(r.creator) },
     r && { label: 'Protocol revenue', ...rev(String(BigInt(r.protocol || 0) + BigInt(r.antiSnipe || 0))) },
   ].filter(Boolean);
+  const created = new Date(t.createdAt);
   return (
-    <Card className="pl-launch-info">
+    <div className="pl-launch-info">
       <span className="pl-launch-section-title">Info</span>
       <dl className="pl-launch-info-grid">
         <div>
@@ -311,22 +410,22 @@ function Info({ data, token: t, now }) {
           <dd>
             {t.createdTx ? (
               <a className="pl-place-link" href={explorerTx(t.createdTx)} target="_blank" rel="noopener noreferrer">
-                {formatUtc(t.createdAt)} <ExternalLink size={12} />
+                {formatUtc(created).replace(/, \d\d:\d\d UTC$/, '')}
               </a>
             ) : (
-              formatUtc(t.createdAt)
+              formatUtc(created).replace(/, \d\d:\d\d UTC$/, '')
             )}
             <span className="pl-launch-muted"> ({age(t.createdAt, now)} ago)</span>
           </dd>
         </div>
-        <div>
-          <dt>Pair</dt>
-          <dd>
-            {q.symbol} · {t.kind === 'b20' ? 'B20' : 'ERC-20'}
-          </dd>
-        </div>
+        {econ?.type !== 'economy' && (
+          <div>
+            <dt>Trading fee</dt>
+            <dd className="mono">{econ ? tradePct(econ.buyTax) : '1%'}</dd>
+          </div>
+        )}
       </dl>
-      <dl className="pl-launch-info-grid pl-launch-info-money">
+      <dl className="pl-launch-info-grid">
         {cells.map((c) => (
           <div key={c.label}>
             <dt>{c.label}</dt>
@@ -335,63 +434,7 @@ function Info({ data, token: t, now }) {
           </div>
         ))}
       </dl>
-    </Card>
-  );
-}
-
-function About({ data, econ }) {
-  const t = data.token;
-  return (
-    <Card className="pl-launch-about">
-      <span className="pl-launch-section-title">About</span>
-      <dl className="pl-place-kv">
-        <div>
-          <dt>Contract</dt>
-          <dd className="pl-launch-inline">
-            <AddressLink address={t.address} />
-            <CopyAddress address={t.address} />
-          </dd>
-        </div>
-        <div>
-          <dt>Standard</dt>
-          <dd>{t.kind === 'b20' ? 'B20 (Base standard)' : 'ERC-20'}</dd>
-        </div>
-        <div>
-          <dt>Launch type</dt>
-          <dd>{econ && econ.generation >= 3 ? `${econ.type === 'economy' ? 'Economy' : 'Standard'}, ${t.version}` : t.version}</dd>
-        </div>
-        {t.devBuy && (
-          <div>
-            <dt>Dev buy</dt>
-            <dd className="mono">
-              {compact(units(t.devBuy.amountOut, 18, 0))} {t.symbol}
-            </dd>
-          </div>
-        )}
-        <div>
-          <dt>Creator vault</dt>
-          <dd>
-            <AddressLink address={t.vault} />
-          </dd>
-        </div>
-        {data.communityVault && (
-          <div>
-            <dt>Community Pool</dt>
-            <dd>
-              <AddressLink address={data.communityVault} />
-            </dd>
-          </div>
-        )}
-        <div>
-          <dt>Metadata</dt>
-          <dd>{t.metadataEditable ? 'Name and logo can change' : 'Fixed'}; ticker fixed</dd>
-        </div>
-        <div>
-          <dt>Liquidity</dt>
-          <dd>Locked for good</dd>
-        </div>
-      </dl>
-    </Card>
+    </div>
   );
 }
 
@@ -417,7 +460,7 @@ export default function LaunchTokenPage() {
       <div className="pl-launch">
         <Link to={launchPath()} className="pl-place-back">
           <ArrowLeft size={14} />
-          Launchpad
+          All tokens
         </Link>
         {error.status === 404 ? (
           <Card className="pl-place-empty-card">
@@ -436,34 +479,32 @@ export default function LaunchTokenPage() {
   }
 
   const t = live;
-  const q = t.quote;
   const econ = tokenEconomy(t);
   const collections = (nft.data?.deployed && nft.data.collections) || [];
   return (
     <div className="pl-launch pl-launch-token">
       <Link to={launchPath()} className="pl-place-back">
         <ArrowLeft size={14} />
-        Launchpad
+        All tokens
       </Link>
 
       <header className="pl-launch-token-head">
-        <TokenLogo token={t} size={64} />
+        <TokenLogo token={t} size={56} />
         <div className="pl-launch-token-title">
-          <h1 className="page-title">{t.name}</h1>
-          <div className="pl-launch-token-sub">
-            <span className="pl-launch-strong">${t.symbol}</span>
-            <span className="pl-launch-muted mono">{shortAddress(t.address)}</span>
+          <div className="pl-launch-token-name">
+            <h1 className="page-title">{t.name}</h1>
+            <span className="pl-launch-muted">{t.symbol}</span>
+            <span className="pl-launch-muted mono pl-launch-small">{shortAddress(t.address)}</span>
             <CopyAddress address={t.address} />
-            <KindBadge kind={t.kind} />
-            <Badge tone="neutral">{q.symbol} pair</Badge>
-            {econ?.generation >= 3 && <Badge tone={econ.type === 'economy' ? 'accent' : 'neutral'}>{econ.type === 'economy' ? 'Economy' : 'Standard'}</Badge>}
-            <Badge tone="accent">
-              <Rocket size={11} /> Launched on Place
-            </Badge>
-            <NewBadge createdAt={t.createdAt} now={now} />
           </div>
-          <Links links={t.links} />
+          <div className="pl-launch-token-sub">
+            <PairChip quote={t.quote} />
+            {econ?.type === 'economy' && <Badge tone="warn">Tax</Badge>}
+            <Badge tone="neutral">{t.kind === 'b20' ? 'B20' : 'ERC20'}</Badge>
+            {t.metadataEditable ? <Badge tone="neutral">Editable</Badge> : <Badge tone="success">Immutable</Badge>}
+          </div>
         </div>
+        <Links links={t.links} />
       </header>
 
       <Stats token={t} econ={econ} />
@@ -472,20 +513,15 @@ export default function LaunchTokenPage() {
         <div className="pl-place-stack">
           <Chart token={t} />
           {narrow && <SwapPanel token={t} />}
-          <Info data={data} token={t} now={now} />
+          <Info data={data} token={t} econ={econ} now={now} />
           <TokenTabs data={data} token={t} econ={econ} now={now} collections={collections} />
-          <Card className="pl-launch-disclosures-card">
-            <span className="pl-launch-section-title">Disclosures</span>
-            <Disclosures data={data} econ={econ} />
-          </Card>
+          <Disclosures data={data} econ={econ} />
         </div>
-        <div className="pl-place-stack">
-          {!narrow && <SwapPanel token={t} />}
-          <About data={data} econ={econ} />
-          <Link to={consolePath('fees')} className="pl-launch-muted pl-launch-small pl-launch-console-link">
-            Created this token? Claim its fees in your profile
-          </Link>
-        </div>
+        {!narrow && (
+          <div className="pl-place-stack">
+            <SwapPanel token={t} />
+          </div>
+        )}
       </div>
     </div>
   );

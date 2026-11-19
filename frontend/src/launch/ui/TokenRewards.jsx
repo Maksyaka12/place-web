@@ -1,16 +1,16 @@
-// Token page tabs about rewards: Holder rewards and Trader rewards (the daily streams of an Economy token: what this
-// wallet can claim, the rule, whether it qualifies today and when the next payout lands), Staking (the token's
-// staking vaults), NFT (collections paired with the token) and Campaigns (rewards beyond the token's own economy:
-// Community Pool and wallet-funded streams, snapshot campaigns). Staking, NFT and Campaigns use the hub's cards.
+// Token page tabs about rewards: Holder rewards and Trader rewards (one status sentence, four
+// figures, the countdown to the next 00:00 UTC payout and Claim rewards), Staking (the token's staking vaults), NFT
+// (collections paired with the token) and Campaigns (rewards beyond the token's own economy: Community Pool and
+// wallet-funded streams, snapshot campaigns). Staking, NFT and Campaigns use the hub's cards.
 import { Link } from 'react-router-dom';
-import { Gift, BarChart3, Coins, ArrowUpRight, CheckCircle2, AlertCircle, Clock, Image as ImageIcon, Megaphone } from 'lucide-react';
-import { Button, EmptyState, Tile } from '../../themes/place/components/ui';
-import { TxButton, TxResult, ConnectButton, Skeleton, QueryError } from '../../themes/place/pages/place/parts';
+import { Coins, ArrowUpRight, Image as ImageIcon } from 'lucide-react';
+import { Button, EmptyState } from '../../themes/place/components/ui';
+import { TxButton, TxResult, ConnectButton } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx, useCampaigns } from '../../place/hooks';
 import { formatAmount } from '../../place/format';
 import { useRewards, useHubStreams } from '../hooks.js';
 import { REWARDS_DISTRIBUTOR_ABI } from '../abi.js';
-import { STREAM_LABEL, tradePct } from '../economy.js';
+import { STREAM_LABEL } from '../economy.js';
 import { compact, amount } from '../format.js';
 import { units } from './TokenEconomy.jsx';
 import { HubCard, hubItems } from './HubPage.jsx';
@@ -20,13 +20,12 @@ import { CollectionCard } from './CollectionParts.jsx';
 /** "1,234.5 USDC" for a raw amount of a reward token ({ symbol, decimals }). */
 export const rewardText = (raw, r) => `${formatAmount(raw || 0, r?.decimals ?? 18, { maxDecimals: 6 })} ${r?.symbol || ''}`.trim();
 
-/** "05:12": hours and minutes until the next 00:00 UTC. */
+/** "05h 12m 03s" until the next 00:00 UTC. */
 export function untilMidnight(now) {
   const day = 86_400_000;
   const left = Math.max(0, day - (now % day));
-  const h = Math.floor(left / 3_600_000);
-  const m = Math.floor((left % 3_600_000) / 60_000);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(Math.floor(left / 3_600_000))}h ${pad(Math.floor((left % 3_600_000) / 60_000))}m ${pad(Math.floor((left % 60_000) / 1000))}s`;
 }
 
 /** A single-stream claim: the newest published cumulative amount and its proof. */
@@ -40,24 +39,25 @@ function claimCall(item, account) {
   };
 }
 
-/** Whether the wallet meets the stream's rule right now, with the line that says so. */
-function eligibility(kind, stream, today, t) {
+/** One sentence: whether the wallet meets the stream's rule right now, and what is missing. */
+function statusText(kind, stream, today, t, address) {
+  if (!address) return 'Connect your wallet to see your rewards. Rewards for each UTC day are shared after 00:00 UTC.';
+  if (!today) return 'Checking your wallet…';
   const need = BigInt(stream.criterion || 0);
   if (kind === 'holders') {
-    const have = BigInt(today?.balance || 0);
-    if (have >= need && have > 0n) return { ok: true, text: 'You qualify: your balance meets the minimum holding.' };
-    const more = need - have;
-    return { ok: false, text: have > 0n ? `Hold ${compact(units(more, 18, 2))} ${t.symbol} more at 00:00 UTC to qualify.` : `Hold at least ${compact(units(need, 18, 0))} ${t.symbol} at 00:00 UTC to qualify.` };
+    const have = BigInt(today.balance || 0);
+    if (have >= need && have > 0n) return `You qualify for today's holder rewards with ${compact(units(have, 18, 2))} ${t.symbol}.`;
+    return `Hold ${compact(units(need - have, 18, 2))} ${t.symbol} more at 00:00 UTC to qualify for today's rewards.`;
   }
-  const have = BigInt(today?.volume || 0);
+  const have = BigInt(today.volume || 0);
   const q = t.quote;
-  if (need === 0n) return have > 0n ? { ok: true, text: 'You qualify: you traded today.' } : { ok: false, text: 'Buy or sell any amount today to qualify.' };
-  if (have >= need) return { ok: true, text: 'You qualify: your volume today meets the minimum.' };
-  return { ok: false, text: `Trade ${amount(units(need - have, q.decimals), q.symbol)} more today to qualify.` };
+  if (need === 0n) return have > 0n ? "You qualify for today's trader rewards." : 'Buy or sell any amount today to qualify for trader rewards.';
+  if (have >= need) return `You qualify for today's trader rewards with ${amount(units(have, q.decimals), q.symbol)} traded.`;
+  return `You traded ${amount(units(have, q.decimals), q.symbol)} today. Trade ${amount(units(need - have, q.decimals), q.symbol)} more to qualify.`;
 }
 
-/** Holder rewards or Trader rewards of an Economy token: four figures, the status line, the countdown and Claim. */
-export function RewardsTab({ data, econ, kind, now }) {
+/** Holder rewards or Trader rewards of an Economy token. */
+export function RewardsTab({ data, kind, now }) {
   const t = data.token;
   const q = t.quote;
   const { address } = usePlaceAccount();
@@ -65,61 +65,48 @@ export function RewardsTab({ data, econ, kind, now }) {
   const tx = usePlaceTx();
   const stream = (data.rewards || []).find((s) => s.economy && s.kind === kind);
   const holders = kind === 'holders';
-  const Icon = holders ? Gift : BarChart3;
-  const share = econ ? [econ.perTrade.buy[kind], econ.perTrade.sell[kind]] : [0, 0];
-  const desc = holders
-    ? `${tradePct(share[0])} of each buy and ${tradePct(share[1])} of each sell is shared every UTC day between holders, by balance.`
-    : `${tradePct(share[0])} of each buy and ${tradePct(share[1])} of each sell is shared every UTC day between traders, by volume.`;
   if (!stream) {
-    return <EmptyState icon={<Icon size={26} />} title="Rewards start with the first day" description={`${desc} The first payout opens after the first UTC day of trading closes.`} />;
+    return <EmptyState title="Rewards start with the first day" description="The first payout opens after the first UTC day of trading closes at 00:00 UTC." />;
   }
   const r = stream.rewardToken;
   const item = (mine.data?.rewards || []).find((x) => x.streamId === stream.id);
   const pending = (mine.data?.pending || []).find((p) => p.streamId === stream.id);
-  const today = mine.data?.today;
   const claimable = BigInt(item?.claimable || 0);
   const earned = BigInt(item?.cumulative || 0) + BigInt(pending?.amount || 0);
-  const requirement = holders
-    ? { label: 'Minimum holding', value: `${compact(units(stream.criterion, 18, 0))} ${t.symbol}`, mine: today ? `You hold ${compact(units(today.balance, 18, 2))} ${t.symbol}` : null }
-    : {
-        label: 'Minimum daily volume',
-        value: BigInt(stream.criterion || 0) > 0n ? amount(units(stream.criterion, q.decimals), q.symbol) : 'Any trade',
-        mine: today ? `Your volume today ${amount(units(today.volume, q.decimals), q.symbol)}` : null,
-      };
-  const status = address && today ? eligibility(kind, stream, today, t) : null;
-  const dash = address ? (mine.isLoading ? '…' : null) : '—';
   const short = (raw) => `${amountText(raw || 0, r.decimals)} ${r.symbol || ''}`.trim();
+  const value = (raw) => (address ? (mine.isLoading ? '…' : short(raw)) : short(0));
+  const figures = [
+    ['Claimable rewards', value(String(claimable))],
+    ['Total earned', value(String(earned))],
+    holders
+      ? ['Minimum holding', `${compact(units(stream.criterion, 18, 0))} ${t.symbol}`]
+      : ['Minimum daily volume', BigInt(stream.criterion || 0) > 0n ? amount(units(stream.criterion, q.decimals), q.symbol) : 'Any trade'],
+    ['Rewards claimed', value(item?.claimed)],
+  ];
   return (
     <div className="pl-launch-tab-body">
-      <p className="pl-launch-section-desc">{desc}</p>
-      <div className="pl-launch-tab-tiles">
-        <Tile label="Claimable" value={dash ?? short(String(claimable))} sub={pending ? `+${short(pending.amount)} being published` : r.symbol} />
-        <Tile label={requirement.label} value={requirement.value} sub={address ? requirement.mine || '…' : 'Connect wallet to check'} />
-        <Tile label="Total earned" value={dash ?? short(String(earned))} sub="all days so far" />
-        <Tile label="Claimed" value={dash ?? short(item?.claimed)} sub={`${short(stream.claimed)} by everyone`} />
-      </div>
-      <div className="pl-launch-reward-bar">
-        <span className={`pl-launch-reward-status ${status ? (status.ok ? 'ok' : 'no') : ''}`.trim()}>
-          {status ? status.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} /> : <Icon size={16} />}
-          {status ? status.text : address ? 'Checking your wallet…' : 'Connect wallet to see whether you qualify.'}
-        </span>
-        <span className="pl-launch-reward-next">
-          <Clock size={14} />
-          Next payout in <span className="mono pl-launch-strong">{untilMidnight(now)}</span>
-          <span className="pl-launch-muted pl-launch-small">at 00:00 UTC</span>
-        </span>
+      <p className="pl-launch-section-desc">{statusText(kind, stream, mine.data?.today, t, address)}</p>
+      <dl className="pl-launch-plain-grid">
+        {figures.map(([label, v]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd className="mono">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="pl-launch-next-payout">
+        Next payout in <span className="mono pl-launch-strong">{untilMidnight(now)}</span> <span className="pl-launch-muted">at 00:00 UTC</span>
+      </p>
+      <div className="pl-launch-tab-actions">
         {address ? (
           <TxButton tx={tx} disabled={claimable === 0n} busyLabel="Claiming on Base..." onClick={() => tx.send(claimCall(item, address))}>
-            {claimable === 0n ? 'Nothing to claim yet' : `Claim ${rewardText(String(claimable), r)}`}
+            Claim rewards
           </TxButton>
         ) : (
-          <ConnectButton />
+          <ConnectButton>Connect wallet</ConnectButton>
         )}
       </div>
       <TxResult tx={tx} success="Rewards claimed" />
-      <Link to={`/hub?stream=${stream.id}`} className="pl-place-link pl-launch-small pl-launch-reward-history">
-        Daily history in the Rewards hub <ArrowUpRight size={13} />
-      </Link>
     </div>
   );
 }
@@ -200,30 +187,27 @@ export function NftTab({ token, collections }) {
   );
 }
 
-/** Rewards for this token beyond its own economy streams: Community Pool or wallet-funded streams and snapshot campaigns. */
-export function CampaignsTab({ data }) {
+/**
+ * Rewards for this token beyond its own economy streams: Community Pool or wallet-funded streams on the token, streams
+ * its Community Pool funded for other targets (an NFT holders campaign of a paired collection) and snapshot campaigns.
+ * The page uses it to decide whether the Campaigns tab shows at all.
+ */
+export function useTokenCampaigns(data) {
   const t = data.token;
   const { address } = usePlaceAccount();
-  // Every stream (the hub's own query): those on this token, plus those its Community Pool funded for other targets
-  // (an NFT holders campaign for a paired collection).
   const streams = useHubStreams(address ? { account: address } : {});
   const snapshots = useCampaigns({ status: 'all', target: t.address, limit: 50 });
-  if (streams.isLoading || snapshots.isLoading) return <Skeleton height={220} />;
-  if (streams.error) return <QueryError error={streams.error} retry={streams.refetch} />;
   const pool = data.communityVault;
   const extra = (streams.data?.streams || []).filter((s) => s.source !== 'economy' && (s.token?.address === t.address || (pool && s.funder === pool)));
   const items = hubItems(extra, [], snapshots.data?.campaigns || []).sort(byPhase);
+  return { items, isLoading: streams.isLoading || snapshots.isLoading };
+}
+
+export function CampaignsTab({ data, campaigns }) {
+  const t = data.token;
   return (
     <div className="pl-launch-tab-body">
-      {items.length ? (
-        <CardGrid items={items} />
-      ) : (
-        <EmptyState
-          icon={<Megaphone size={28} />}
-          title="No campaigns yet"
-          description={`Holder, trader and NFT holder campaigns for ${t.symbol} from its Community Pool or any wallet show up here.`}
-        />
-      )}
+      <CardGrid items={campaigns.items} />
       <HubLinks create={`/create?token=${t.address}`} createLabel="Create campaign" hub={`/hub?token=${t.address}`} />
     </div>
   );

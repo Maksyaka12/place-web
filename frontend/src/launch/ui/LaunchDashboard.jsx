@@ -2,17 +2,17 @@
 // with All / Crypto / Stocks tabs, Trending / Vol 24h / New / Liquidity sorting and a Grid / Cards / Table view
 // (remembered per browser; the table sorts by any column).
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, ArrowRight, Flame, Zap, Sprout, Droplets, Search, Rocket, LayoutDashboard, LayoutGrid, Rows3, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, ArrowRight, Flame, Zap, Sprout, Droplets, Search, Rocket, LayoutDashboard, LayoutGrid, Rows3, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, Star } from 'lucide-react';
 import { Button, Card, Tile, EmptyState } from '../../themes/place/components/ui';
 import { QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useNow } from '../../place/hooks';
 import { isTestnet } from '../../place/chain';
-import { useLaunchStats, useLaunchTokens } from '../hooks.js';
+import { useLaunchStats, useLaunchTokens, usePairs } from '../hooks.js';
 import { useLaunchLive, useLiveTokens } from '../live.js';
 import { TokenCard, TokenRowCard, money } from './TokenCard.jsx';
-import { TokenLogo, Change, launchTokenPath, launchNewPath, consolePath } from './parts.jsx';
-import { useViewMode } from './vaults.jsx';
+import { TokenLogo, NewBadge, TaxBadge, CopyInline, StarButton, McBar, agoText, useWatchlist, launchTokenPath, launchNewPath, consolePath } from './parts.jsx';
+import { useViewMode, FilterMenu } from './vaults.jsx';
 import { usd, compact, age, price as priceText } from '../format.js';
 
 const PAGE = 24;
@@ -31,22 +31,38 @@ const SORTS = [
 ];
 
 const VIEWS = [
-  ['grid', 'Grid', LayoutGrid],
-  ['cards', 'Cards', Rows3],
-  ['table', 'Table', TableIcon],
+  ['grid', 'Grid view', LayoutGrid],
+  ['cards', 'Card view', Rows3],
+  ['table', 'Table view', TableIcon],
 ];
 
-/** Sortable columns of the Table view: the value each sorts by (USD when the pair has a price, else the pair amount). */
+/** A USD value with the same value in the pair asset under it. */
+function Dual({ valueUsd, value, q, decimals = 4 }) {
+  return (
+    <>
+      <span>{money(valueUsd, value, q)}</span>
+      {valueUsd != null && value != null && (
+        <span className="pl-launch-muted pl-launch-small">
+          {compact(value, { decimals })} {q}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Columns of the Table view; each sorts by its value (USD when the pair has a price, else the pair amount). */
 const COLUMNS = [
   { id: 'mcap', label: 'Market cap', value: (t) => t.marketCapUsd ?? t.marketCap },
-  { id: 'price', label: 'Price', value: (t) => t.priceUsd ?? t.price },
-  { id: 'volume', label: 'Volume 24h', value: (t) => t.volume24hUsd ?? t.volume24h },
+  { id: 'age', label: 'Created At', value: (t) => new Date(t.createdAt).getTime() },
   { id: 'liquidity', label: 'Liquidity', value: (t) => t.liquidity?.valueUsd ?? t.liquidity?.value },
-  { id: 'holders', label: 'Holders', value: (t) => t.holders },
-  { id: 'age', label: 'Age', value: (t) => -new Date(t.createdAt).getTime() },
+  { id: 'volume', label: 'Volume 24h', value: (t) => t.volume24hUsd ?? t.volume24h },
+  { id: 'lifetime', label: 'Lifetime volume', value: (t) => t.volumeAllUsd ?? t.volumeAll },
+  { id: 'trades', label: 'Trades 24h', value: (t) => t.trades24h },
+  { id: 'price', label: 'Price', value: (t) => t.priceUsd ?? t.price },
 ];
 
-function TokenTable({ tokens, now }) {
+function TokenTable({ tokens, now, watch }) {
+  const navigate = useNavigate();
   const [by, setBy] = useState(null);
   const list = useMemo(() => {
     if (!by) return tokens;
@@ -62,7 +78,7 @@ function TokenTable({ tokens, now }) {
           const on = by?.id === c.id;
           const Icon = on ? (by.dir === 'desc' ? ArrowDown : ArrowUp) : ArrowUpDown;
           return (
-            <span key={c.id} className="num" aria-sort={on ? (by.dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
+            <span key={c.id} aria-sort={on ? (by.dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
               <button type="button" className={`pl-launch-list-sort ${on ? 'on' : ''}`.trim()} onClick={() => sortBy(c.id)}>
                 {c.label}
                 <Icon size={12} />
@@ -70,32 +86,73 @@ function TokenTable({ tokens, now }) {
             </span>
           );
         })}
+        <span className="num">Trade</span>
       </div>
       {list.map((t) => {
         const q = t.quote?.symbol || '';
+        const to = launchTokenPath(t.address);
         return (
-          <Link key={t.address} to={launchTokenPath(t.address)} className="pl-launch-list-row" data-testid="launch-card">
+          <div
+            key={t.address}
+            className="pl-launch-list-row"
+            data-testid="launch-card"
+            role="link"
+            tabIndex={0}
+            aria-label={`${t.name} (${t.symbol})`}
+            onClick={() => navigate(to)}
+            onKeyDown={(e) => e.key === 'Enter' && navigate(to)}
+          >
             <span className="pl-launch-list-token">
-              <TokenLogo token={t} size={32} />
+              <TokenLogo token={t} size={36} />
               <span className="pl-launch-list-name">
-                <span className="pl-launch-strong pl-launch-ellipsis">{t.name}</span>
-                <span className="pl-launch-muted pl-launch-small">
-                  ${t.symbol} · {q}
+                <span className="pl-launch-list-title">
+                  <span className="pl-launch-strong">{t.symbol}</span>
+                  <span className="pl-launch-muted pl-launch-ellipsis">{t.name}</span>
+                  <CopyInline value={t.address} />
+                </span>
+                <span className="pl-launch-list-tags">
+                  <span className="pl-launch-muted pl-launch-small">{q}</span>
+                  <NewBadge createdAt={t.createdAt} now={now} />
+                  <TaxBadge token={t} />
                 </span>
               </span>
             </span>
-            <span className="num mono">
-              <span key={t.liveTick?.cursor} className={t.liveTick ? `pl-launch-flash ${t.liveTick.side}` : undefined}>
-                {money(t.marketCapUsd, t.marketCap, q)}
+            <span className="pl-launch-list-cell mono">
+              <span className="pl-launch-list-mc">
+                <span key={t.liveTick?.cursor} className={t.liveTick ? `pl-launch-flash ${t.liveTick.side}` : undefined}>
+                  {money(t.marketCapUsd, t.marketCap, q)}
+                </span>
+                <McBar usdValue={t.marketCapUsd} />
               </span>
-              <Change value={t.change24h} className="pl-launch-list-change" />
+              {t.marketCapUsd != null && (
+                <span className="pl-launch-muted pl-launch-small">
+                  {compact(t.marketCap, { decimals: 4 })} {q}
+                </span>
+              )}
             </span>
-            <span className="num mono">{t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q)}</span>
-            <span className="num mono">{money(t.volume24hUsd, t.volume24h, q)}</span>
-            <span className="num mono">{money(t.liquidity?.valueUsd, t.liquidity?.value, q)}</span>
-            <span className="num mono">{compact(t.holders)}</span>
-            <span className="num mono pl-launch-muted">{age(t.createdAt, now)}</span>
-          </Link>
+            <span className="pl-launch-list-cell">{agoText(t.createdAt, now)}</span>
+            <span className="pl-launch-list-cell mono">
+              <Dual valueUsd={t.liquidity?.valueUsd} value={t.liquidity?.value} q={q} />
+            </span>
+            <span className="pl-launch-list-cell mono">
+              <Dual valueUsd={t.volume24hUsd} value={t.volume24h} q={q} />
+            </span>
+            <span className="pl-launch-list-cell mono">
+              <Dual valueUsd={t.volumeAllUsd} value={t.volumeAll} q={q} />
+            </span>
+            <span className="pl-launch-list-cell mono">{compact(t.trades24h ?? 0)}</span>
+            <span className="pl-launch-list-cell mono">
+              <span>{t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q)}</span>
+              {t.priceUsd != null && <span className="pl-launch-muted pl-launch-small">{priceText(t.price, q)}</span>}
+            </span>
+            <span className="pl-launch-list-actions">
+              <StarButton address={t.address} watch={watch} />
+              <span className="pl-launch-trade-btn">
+                <Zap size={13} />
+                Trade
+              </span>
+            </span>
+          </div>
         );
       })}
     </div>
@@ -179,6 +236,11 @@ export default function LaunchDashboard() {
   useEffect(() => setSearch(urlQuery), [urlQuery]);
   const [pages, setPages] = useState(1);
   const [view, pickView] = useViewMode('place_launch_view', VIEWS.map(([id]) => id));
+  const asset = params.get('asset') || null;
+  const [onlyWatch, setOnlyWatch] = useState(false);
+  const watch = useWatchlist();
+  const pairsQ = usePairs();
+  const assets = (pairsQ.data?.pairs || []).filter((p) => p.launches > 0).map((p) => [p.address, p.symbol || p.address]);
 
   const set = (key, value, fallback) => {
     const next = new URLSearchParams(params);
@@ -189,11 +251,12 @@ export default function LaunchDashboard() {
   };
 
   const query = useMemo(
-    () => ({ sort, category: category === 'all' ? undefined : category, q: search.trim() || undefined, limit: PAGE * pages }),
-    [sort, category, search, pages]
+    () => ({ sort, category: category === 'all' ? undefined : category, quote: asset || undefined, q: search.trim() || undefined, limit: PAGE * pages }),
+    [sort, category, asset, search, pages]
   );
   const feed = useLaunchTokens(query);
-  const tokens = useLiveTokens(feed.data?.tokens, feed.data?.indexedBlock);
+  const live = useLiveTokens(feed.data?.tokens, feed.data?.indexedBlock);
+  const tokens = onlyWatch ? live.filter((t) => watch.has(t.address)) : live;
 
   return (
     <div className="pl-launch">
@@ -235,11 +298,15 @@ export default function LaunchDashboard() {
               </button>
             ))}
           </div>
+          <button type="button" className={`pl-launch-watch-chip ${onlyWatch ? 'on' : ''}`.trim()} aria-pressed={onlyWatch} onClick={() => setOnlyWatch((v) => !v)}>
+            <Star size={14} />
+            Watchlist
+          </button>
+          <FilterMenu label={asset ? "Asset" : "All assets"} value={asset} options={assets} anyLabel="All assets" onChange={(v) => set('asset', v ?? '', '')} />
           <div className="seg soft pl-launch-views" role="tablist" aria-label="View">
             {VIEWS.map(([id, label, Icon]) => (
               <button key={id} type="button" role="tab" aria-selected={view === id} aria-label={label} title={label} onClick={() => pickView(id)}>
-                <Icon size={14} />
-                <span>{label}</span>
+                <Icon size={15} />
               </button>
             ))}
           </div>
@@ -268,11 +335,11 @@ export default function LaunchDashboard() {
       ) : tokens.length ? (
         <>
           {view === 'table' ? (
-            <TokenTable tokens={tokens} now={now} />
+            <TokenTable tokens={tokens} now={now} watch={watch} />
           ) : view === 'cards' ? (
             <div className="pl-launch-rowcards">
-              {tokens.map((t) => (
-                <TokenRowCard key={t.address} t={t} now={now} />
+              {tokens.map((t, i) => (
+                <TokenRowCard key={t.address} t={t} now={now} rank={i + 1} watch={watch} />
               ))}
             </div>
           ) : (
@@ -294,7 +361,7 @@ export default function LaunchDashboard() {
         <Card className="pl-place-empty-card">
           <EmptyState
             icon={<Rocket size={28} />}
-            title={search ? 'No tokens match your search' : category === 'stocks' ? 'No launches paired with stocks yet' : 'No launches yet'}
+            title={onlyWatch ? 'Your watchlist is empty' : search ? 'No tokens match your search' : category === 'stocks' ? 'No launches paired with stocks yet' : 'No launches yet'}
             description={
               category === 'stocks' && isTestnet
                 ? 'Tokenized stocks are not on Base Sepolia. Stock pairs open with the mainnet launch.'

@@ -6,7 +6,7 @@ import { readContractUri } from './meta.js';
 import { PLACE_CHAIN_ID, placeClient } from '../place/chain.js';
 import { launchDeployment } from './deployments.js';
 import { ERC20_ABI, PERMIT2_ABI, ETH, quoteAddress } from './swap.js';
-import { LAUNCH_HOOK_ABI, COMMUNITY_VAULT_ABI } from './abi.js';
+import { LAUNCH_HOOK_ABI } from './abi.js';
 
 const lc = (a) => (a ? String(a).toLowerCase() : a);
 export const launchKeys = {
@@ -204,28 +204,6 @@ export function usePoolConfig(poolId, hook) {
         antiSnipe: antiSnipeEnabled ? { startRate: Number(anti.startTotalFeeRate), windowSeconds: Number(anti.windowSeconds) } : null,
         rateScale: Number(scale),
       };
-    },
-  });
-}
-
-/** What a 0.3.x Community Pool holds right now in its pair asset: the fund plus fees waiting to be collected. */
-export function useCommunityBalance(vault) {
-  return useQuery({
-    queryKey: ['place', PLACE_CHAIN_ID, 'launch', 'community-balance', vault?.toLowerCase() ?? null],
-    enabled: Boolean(vault),
-    staleTime: 30_000,
-    retry: 1,
-    queryFn: async () => {
-      const client = placeClient();
-      const [asset, pending] = await client.multicall({
-        contracts: [
-          { address: vault, abi: COMMUNITY_VAULT_ABI, functionName: 'quote' },
-          { address: vault, abi: COMMUNITY_VAULT_ABI, functionName: 'pendingFees' },
-        ],
-        allowFailure: false,
-      });
-      const fund = await client.readContract({ address: vault, abi: COMMUNITY_VAULT_ABI, functionName: 'fundBalance', args: [asset] });
-      return { fund: fund.toString(), pending: pending.toString(), total: (fund + pending).toString() };
     },
   });
 }

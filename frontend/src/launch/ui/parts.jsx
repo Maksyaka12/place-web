@@ -1,11 +1,12 @@
 // Building blocks shared by the Place Launch pages: token logo, badges, price change, ages. Made from the
 // design-system components (src/themes/place/components/ui) and launch.css.
-import { useState } from 'react';
-import { ChevronDown, Clock, Settings2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, Clock, Settings2, Star, Copy, Check } from 'lucide-react';
 import { Badge } from '../../themes/place/components/ui';
 import { useTokenMeta } from '../hooks.js';
 import { imageUrl } from '../meta.js';
-import { pct, isNew } from '../format.js';
+import { pct, isNew, age } from '../format.js';
+import { pairIcon } from '../pairs.js';
 import { BUCKETS } from '../economy.js';
 
 export const launchPath = () => '/';
@@ -128,4 +129,128 @@ export function Advanced({ title = 'Advanced', note, children }) {
       </div>
     </details>
   );
+}
+
+// ─────────────── launchpad list pieces: pair chip, Tax badge, watchlist star, market-cap scale ───────────────
+
+/** True for an Economy token (it has a buy and a sell tax). */
+export const isEconomy = (t) => (t?.economics?.launchType ?? t?.launchType) === 'economy';
+
+/** The pair asset as a chip with its logo: "ETH", or "Base / ETH" with `chain`. */
+export function PairChip({ quote, chain = false, size = 16 }) {
+  const symbol = quote?.symbol || 'Pair';
+  return (
+    <span className="pl-launch-pair-chip">
+      {chain && <span className="pl-launch-chain-dot" aria-hidden="true" />}
+      {chain && <span>Base</span>}
+      {chain && <span className="pl-launch-muted">/</span>}
+      {!chain && <TokenLogo token={{ symbol }} src={pairIcon({ symbol }) || undefined} size={size} shape="round" />}
+      <span>{symbol}</span>
+    </span>
+  );
+}
+
+/** The Tax badge of an Economy token (amber, like a rule to know). */
+export function TaxBadge({ token }) {
+  if (!isEconomy(token)) return null;
+  return <Badge tone="warn">Tax</Badge>;
+}
+
+const WATCH_KEY = 'place_launch_watchlist';
+const readWatch = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+};
+const listeners = new Set();
+
+/** Starred tokens of this browser (localStorage, shared by every list on the page). */
+export function useWatchlist() {
+  const [set, setSet] = useState(readWatch);
+  useEffect(() => {
+    const on = () => setSet(readWatch());
+    listeners.add(on);
+    return () => listeners.delete(on);
+  }, []);
+  const toggle = (address) => {
+    const next = readWatch();
+    const a = String(address).toLowerCase();
+    if (next.has(a)) next.delete(a);
+    else next.add(a);
+    try {
+      localStorage.setItem(WATCH_KEY, JSON.stringify([...next]));
+    } catch {
+      // not remembered in this browser
+    }
+    listeners.forEach((l) => l());
+  };
+  return { has: (a) => set.has(String(a).toLowerCase()), toggle, size: set.size };
+}
+
+/** The star that adds a token to the watchlist; it never opens the card it sits on. */
+export function StarButton({ address, watch }) {
+  const on = watch.has(address);
+  return (
+    <button
+      type="button"
+      className={`pl-launch-star ${on ? 'on' : ''}`.trim()}
+      aria-label={on ? 'Remove from watchlist' : 'Add to watchlist'}
+      aria-pressed={on}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        watch.toggle(address);
+      }}
+    >
+      <Star size={15} />
+    </button>
+  );
+}
+
+/** Copy a value from inside a clickable card without opening it. */
+export function CopyInline({ value, label = 'Copy address' }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="pl-launch-copy-inline"
+      aria-label={label}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigator.clipboard?.writeText(value);
+        setDone(true);
+        setTimeout(() => setDone(false), 1200);
+      }}
+    >
+      {done ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+/** Market cap on a log scale from $10K to $10M, 0..1 (null without a USD value). */
+export function mcScale(usdValue) {
+  if (usdValue == null || !(usdValue > 0)) return null;
+  return Math.min(1, Math.max(0, (Math.log10(usdValue) - 4) / 3));
+}
+
+/** The small horizontal market-cap bar of grid cards and table rows. */
+export function McBar({ usdValue }) {
+  const v = mcScale(usdValue);
+  if (v == null) return null;
+  return (
+    <span className="pl-launch-mcbar" title="Market cap on a $10K to $10M scale" aria-hidden="true">
+      <span style={{ width: `${Math.max(4, v * 100)}%` }} />
+    </span>
+  );
+}
+
+/** "23h ago", "yesterday", "3mo ago". */
+export function agoText(date, now) {
+  const a = age(date, now);
+  if (a === '—') return a;
+  if (/^1d$/.test(a)) return 'yesterday';
+  return `${a} ago`;
 }

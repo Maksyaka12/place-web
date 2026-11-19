@@ -391,16 +391,25 @@ the same components and tokens as the hub; only these pieces are its own:
 
 - **Live ticker** (`.pl-launch-ticker`): a pill strip of the latest trades on top of the dashboard. It scrolls slowly,
   stops under the pointer, and is a plain scrollable row with reduced motion. Buy is `--green`, Sell is `--red`.
-- **Token card** (`.pl-launch-card` in `.pl-launch-grid`, 5/4/3/2 columns): square artwork (the logo, or the
-  initials on an accent tint) with the image overlay, name and ticker in `--on-image`, then market cap with the 24 h
-  change, price and liquidity, lifetime and 24 h volume, pair and age. Values are USD when the pair has a USD price.
 - **Category tabs** (`.pl-launch-tabs`): All / Crypto / Stocks as 20 px text tabs; sorting is a `.seg.soft`.
-- **List views**: a `.seg.soft` (`.pl-launch-views`, icons only below 420 px) switches Grid (the token cards), Cards
-  (`.pl-launch-rowcard` in `.pl-launch-rowcards`, 3/2/1 columns: 48 px logo, name, ticker and pair, market cap with the
-  24 h change, then Price, Vol 24h, Liquidity, Holders and Age in a row) and Table (`.pl-launch-list`: token, market cap,
-  price, volume 24h, liquidity, holders, age; a click on a column sorts by it, again reverses, a third time returns to
-  the feed order; on phones it scrolls sideways inside its card with the token column sticky). The view is remembered
-  per browser (`useViewMode` in `vaults.jsx`, key `place_launch_view`).
+- **Token list**. A filter row: the Trending / Vol 24h / New / Liquidity `.seg.soft`, a Watchlist
+  chip (`.pl-launch-watch-chip`, amber when on; stars are kept per browser by `useWatchlist` in `parts.jsx`), an "All
+  assets" `FilterMenu` (the pair asset, `?asset=`), the Grid / Card / Table icon switch (`.pl-launch-views`, remembered
+  per browser, key `place_launch_view`) and the search. Shared pieces in `parts.jsx`: `PairChip` (the pair logo and
+  symbol, or "Base / PAIR" with the chain dot), `TaxBadge` (amber "Tax" for Economy tokens), `StarButton`,
+  `CopyInline` (copy inside a clickable card), `McBar` (market cap on a $10K–$10M log scale). Cards and rows are
+  `role="link"` blocks, so their inner buttons never open the page.
+  - **Grid** (`.pl-launch-card` in `.pl-launch-grid`, 5/4/3/2 columns): square artwork with NEW / Tax badges, the
+    name and $symbol with copy in `--on-image`; then market cap with "MC" and the scale bar, price and "Liq", Lifetime
+    and Vol 24h, the pair chip and "23h ago".
+  - **Cards** (`.pl-launch-rowcard` in `.pl-launch-rowcards`, 3/2/1 columns): "#01" in accent, "23H AGO" and the star
+    on top; a 56 px logo with NEW / Tax, the $symbol at 20 px, the name with copy; Market cap at 24 px with "USD price /
+    pair price"; on the right a vertical 10M–10K scale with an accent fill; Liquidity · Vol 24h / Lifetime (24 h in
+    green) · Trades 24h; then "Base / PAIR", Tax or LP locked, and Trade (an accent pill, `.pl-launch-trade-btn`).
+  - **Table** (`.pl-launch-list`): Token (logo, SYMBOL, name with copy; the pair and NEW / Tax under it), Market cap
+    (with the bar), Created At, Liquidity, Volume 24h, Lifetime volume, Trades 24h, Price, then the star and Trade.
+    Money cells show the pair amount under the USD value. A click on a header sorts (again reverses, a third time
+    returns to the feed order). It scrolls sideways inside its card, the token column sticky on phones.
 - **Tiny prices** keep their leading zeros counted: `$0.0₅3667` (`smallNumber` in `src/launch/format.js`).
 - **Launch form** (`LaunchForm.jsx`, `EconomyFields.jsx`): three numbered steps (`.pl-launch-step`, a 30 px
   accent-soft number and a 22 px title): 01 Basics, 02 Economy, 03 Launch options. Options are cards with the switch
@@ -416,47 +425,44 @@ the same components and tokens as the hub; only these pieces are its own:
   preview): creator `--accent`, holders `--green`, traders `--amber`, burn `--red`, community pool a mix of accent
   and green. On the right: a Live preview card (logo, name, TOKEN/PAIR, New, start price, launch cap, the allocation
   bar, badges) and a summary card with the launch button; both move under the form below 1180 px.
-- **Token page** (`LaunchTokenPage.jsx`, laid out like o1): header with the logo, name, ticker, short address with
-  copy, badges (B20 / ERC-20, pair, Economy or Standard, Launched on Place, New) and link pills; then the stat row
-  (`.pl-launch-stats`, one bordered strip, 7/4/2 columns): Market cap, Token price (with the 24 h change), Volume 24h,
-  Pool liquidity, Total supply, Holders, Buy / sell tax (Trading fee for Standard and older tokens), each a 18 px mono
-  value with the same value in the pair asset (or a fact) under it in 12 px `--text-3`. Below, two columns: the
-  candlestick chart (SVG, `--green`/`--red` candles, `--border` grid, accent dashed last price), the **Info** card
-  (`.pl-launch-info`: Creator with copy and link, Created with "(20h ago)", Pair; then Lifetime volume, Creator revenue
-  and Protocol revenue in USD with the pair amount under each), the tabs card, and **Disclosures** as its own card
-  under the tabs; on the right the swap card (Buy fills green, Sell red) and About, under the chart below 1100 px.
-  Tabs are 17 px text tabs (`.pl-launch-tabs.pl-launch-token-tabs`, the open one in `--text` with a 2 px accent
-  underline, counts in a small mono pill) in `.pl-launch-tabs-scroll` (scrolls sideways on phones and keeps the open
-  tab in view; the tab is in `?tab=`). Economy token: Transactions · Holders · Economy · Burn · Holder rewards · Trader
-  rewards (each only with its bucket) · Staking · NFT (only with a collection paired with the token) · Campaigns.
-  Standard token: Transactions · Holders · Economy · Staking · NFT · Campaigns. 0.1.0 / 0.2.0 tokens keep Burn when
-  they burn. Transactions has an All / Buy / Sell `.seg.soft` beside the 24 h buys, sells and traders.
-- **Token page tabs** (`TokenEconomy.jsx`, `TokenRewards.jsx`; body `.pl-launch-tab-body`, tiles
-  `.pl-launch-tab-tiles` 4/2 columns, `.three` 3/2): **Economy** (Economy token) — Buy tax and Sell tax tiles with
-  "includes X% Place" (X in % of the trade) and the anti-snipe window (from the hook's pool config); the ring of the
-  launch form (`AllocationRing` with `center`: the real tax after Place, "1.4%" or "2.1% / 3.5%" for different sides)
-  beside the share table (`.pl-launch-share-grid`: Creator, Holder rewards, Trader rewards, Burn, Community Pool, with
-  Share of the part after Place, Buy tax and Sell tax in % of a trade; buckets at 0% in `--text-3`; an "After Place"
-  total row on `--surface-2`). Place is never a row or a pill in the split. Then rule tiles (`.pl-launch-econ-rules`):
-  Minimum holding, Minimum daily volume, Reward token and Community Pool (its balance read from the vault and the
-  address link), and Collected since launch. **Economy** (Standard 0.3.x token, like o1's fee tab) — Trading fee,
-  Anti-snipe window and Paid in, then "Fee split": Creator share (70%) and Platform share (30%) with each in % of a
-  trade. 0.2.0 tokens show the Economy layout with their creator / burn / community fund split and the fund facts;
-  0.1.0 keeps its buyback list. **Burn** — Ready to burn, At the burn address, Burned with the button, the Burn tokens
-  button (any wallet; Connect wallet without one) and rows linking to each burn; 0.2.0 shows its daily buyback burns.
-  **Holder rewards / Trader rewards** (like o1's dividends tab, one short sentence on top) — four tiles: Claimable,
-  the requirement (Minimum holding with "You hold …", or Minimum daily volume with "Your volume today …", from
-  `launch/rewards?token=` → `today`), Total earned, Claimed; then the reward bar (`.pl-launch-reward-bar`): whether the
-  wallet qualifies (`--green` check or `--amber` alert with what is missing), "Next payout in hh:mm" to 00:00 UTC, and
-  Claim (Connect wallet without one); a link to the stream's daily history in the Rewards hub. **Staking**,
-  **Campaigns** — hub cards (`HubCard`, 2 columns, 1 on phones), live first, an empty state when there are none, then
-  Create staking vault / Create campaign and Open in Rewards hub. Campaigns are only what goes beyond the token's own
-  economy streams: Community Pool and wallet-funded streams for the token, streams its Community Pool funded for others
-  (an NFT holders campaign of a paired collection) and snapshot campaigns. **NFT** — the collection cards
-  (`CollectionCard`, `.pl-launch-nft-grid` 3/2 columns) of every collection paired with the token, then Launch NFT and
-  the project page. **Disclosures** — a 2/1 column grid of cards (`.pl-launch-disclosures`, accent icon) in its own card
-  under the tabs: locked liquidity, no reserved supply, anti-snipe, fee split, where the fee applies, burn, what can
-  change and, with rewards, how the daily tables are made.
+- **Token page** (`LaunchTokenPage.jsx`, little text): "All tokens", then the header: 56 px logo, the
+  name (28 px), ticker, short address with copy; under it the pair chip with its logo, Tax (Economy tokens only), the
+  standard (B20 or ERC20) and Immutable (green) or Editable; link pills on the right. The stat row (`.pl-launch-stats`,
+  plain figures on the page, 7/4/2 columns): Market cap, Token price, Volume 24h, Pool liquidity (each with the pair
+  amount under it), Total supply, Holders and, for Economy tokens only, Buy / sell tax. Then two columns: the chart,
+  Info, the tabs card and Disclosures on the left; Swap on the right (under the chart below 1100 px).
+  - **Chart** (`.pl-launch-chart-card`): toolbar (`.pl-launch-chart-toolbar`) with the interval select, USD / PAIR,
+    MarketCap / Price (market cap = price × the supply the API counts) and fullscreen; under the chart the ranges
+    3m / 1m / 5d / 1d (each picks the candle that fits) and a UTC clock. Drawn by our SVG `CandleChart` (no drawing
+    tools, indicators or screenshots: those come with a licensed charting library).
+  - **Info** (`.pl-launch-info`, plain): Creator (address, copy, link), Created (date and "(1d ago)") and, for tokens
+    without economy, Trading fee; then Lifetime volume, Creator revenue and Protocol revenue with the pair amount.
+  - **Tabs**: 22 px text titles (`.pl-launch-token-tabs`, the open one with a 2 px accent underline) in
+    `.pl-launch-tabs-scroll`; `?tab=`. Economy token: Transactions · Holders · Economy · Burn · Holder rewards · Trader
+    rewards (each only with its bucket) · Staking · NFT (with a paired collection) · Campaigns (when there are any).
+    Standard token: Transactions · Holders · Economy · Staking · NFT · Campaigns, the same rules. Transactions has an
+    All / Buy / Sell filter beside its title and its columns: Time, Type, Price and Value (pair amount with "approx $"
+    under it), Amount, Wallet.
+  - **Swap** (`SwapPanel.jsx`): no tax or fee text. You pay / You receive boxes with the amount, its USD value, the
+    asset chip (logo, symbol, Base) and the balance; 20% / 50% / MAX on the pay side (MAX keeps a little ETH for gas);
+    a flip button between the boxes switches buy and sell; Max Slippage with Auto (3%) or a value; the folded Trade
+    details (`.pl-launch-swap-more`: the rate "1 X = $… (… PAIR)" as its summary; minimum received, max slippage,
+    route); the button. During the anti-snipe window an amber alert asks to wait a few seconds.
+- **Token page tabs** (`TokenEconomy.jsx`, `TokenRewards.jsx`; body `.pl-launch-tab-body`): **Economy** (Economy
+  token) — quiet figures (`.pl-launch-figures`): Buy tax and Sell tax with "Includes X% protocol",
+  Anti-snipe window; "Split after protocol" with one sentence; the ring (`AllocationRing` with `center`: the tax after
+  protocol, label "After protocol") beside a plain table (`.pl-launch-split-table`): Creator allocation, Holder
+  rewards, Trader rewards, Burn allocation, Community Pool with Share, Buy tax and Sell tax. Nothing else.
+  **Economy** (Standard token) — Trading fee and Anti-snipe window, then "Base fee split": Creator share and Platform
+  share. 0.2.0 tokens use the Economy layout with their own buckets; 0.1.0 keeps its buyback list. **Burn** — Ready to
+  burn, At the burn address, Burned with the button, Burn tokens and the list of burns. **Holder rewards / Trader
+  rewards** — one status sentence (whether the wallet qualifies today, from
+  `launch/rewards?token=` → `today`), a 2×2 plain grid (`.pl-launch-plain-grid`: Claimable rewards, Total earned,
+  Minimum holding or Minimum daily volume, Rewards claimed), "Next payout in 07h 45m 03s at 00:00 UTC" and Claim
+  rewards. **Staking**, **Campaigns** — hub cards (`HubCard`, 2/1 columns) with Create … and Open in Rewards hub.
+  Campaigns are what goes beyond the token's own economy (`useTokenCampaigns`). **NFT** — the paired collections'
+  `CollectionCard`s. **Disclosures** (`.pl-launch-disclosures-block`, under the tabs, no card) — bold titles and short
+  text as a two-column bulleted list, one column on phones. Creator announcements are not shown on the token page.
 - **Bucket colours** outside the form: wrap in `.pl-econ-palette`. `AllocationBar` (`parts.jsx`) draws the shares as
   one bar with a legend (profile fee cards).
 - **Profile** (`/profile/:section`, `CreatorConsole.jsx`): Launches, NFT launches, Fees, Rewards (the default) and

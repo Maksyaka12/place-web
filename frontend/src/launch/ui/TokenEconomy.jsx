@@ -1,14 +1,14 @@
-// Token page tabs about the money flow: Economy (taxes, the bucket ring and what each bucket gets of a trade),
-// Burn (what waits to be burned and the button anyone can press) and Disclosures (the facts a buyer should know).
-// 0.3.0 and 0.2.0 share the Economy view (tokenEconomy); 0.1.0 keeps its buyback / rewards block.
-import { ExternalLink, Flame, Gift, Lock, ShieldCheck, Users, Coins, Clock, Repeat, Sparkles, FileText, BarChart3 } from 'lucide-react';
-import { Badge, EmptyState, Tile } from '../../themes/place/components/ui';
-import { AddressLink, TxButton, TxResult, ConnectButton } from '../../themes/place/pages/place/parts';
+// Token page tabs about the money flow: Economy (the taxes, the donut after protocol and the
+// split table; Standard tokens: the trading fee and its base split), Burn (what waits to be burned and the button
+// anyone can press) and Disclosures (the facts a buyer should know, two plain columns). 0.1.0 keeps its buyback block.
+import { ExternalLink, Flame, Gift } from 'lucide-react';
+import { EmptyState, Tile } from '../../themes/place/components/ui';
+import { TxButton, TxResult, ConnectButton } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx } from '../../place/hooks';
 import { explorerTx } from '../../place/chain';
 import { formatAmount, formatUtc, shortAddress } from '../../place/format';
 import { BUCKETS, tradePct } from '../economy.js';
-import { usePoolConfig, useCommunityBalance } from '../hooks.js';
+import { usePoolConfig } from '../hooks.js';
 import { AllocationRing } from './EconomyFields.jsx';
 import { compact, age, bpsText, amount } from '../format.js';
 
@@ -33,51 +33,99 @@ export function rewardTokenLabel(econ, t, rewardInfo) {
 
 // ─────────────────────────────── Economy ───────────────────────────────
 
-/** "+20 s", "Off" for the anti-snipe window from the hook's pool config. */
+/** "20 seconds" or "Disabled" for the anti-snipe window, from the hook's pool config. */
 function antiSnipeText(econ, pool) {
-  if (econ?.antiSnipe === false || pool?.data?.antiSnipe === null) return { value: 'Off', sub: 'The first trades pay the normal fee' };
+  if (econ?.antiSnipe === false || pool?.data?.antiSnipe === null) return 'Disabled';
   const a = pool?.data?.antiSnipe;
-  const start = a ? `${Number((a.startRate / 1e6).toFixed(2))}%` : '99%';
-  return { value: a ? `${a.windowSeconds} seconds` : 'On', sub: `Fee falls from ${start} after launch` };
+  return a ? `${a.windowSeconds} seconds` : 'Enabled';
 }
 
-/**
- * The split of an Economy tax after Place: one row per bucket with its share of what is left after Place and what
- * it takes of a buy and of a sell, in % of the trade. Place is not a row: it is in the tax tiles above.
- */
+const ROW_LABEL = { creator: 'Creator allocation', holders: 'Holder rewards', traders: 'Trader rewards', burn: 'Burn allocation', community: 'Community Pool' };
+
+/** The split after protocol: one row per bucket with its share and what it takes of a buy and of a sell. */
 function ShareTable({ econ }) {
   const { buy, sell } = econ.perTrade;
-  const label = (b) => (econ.generation === 2 && b.id === 'community' ? 'Community fund' : b.id === 'creator' ? 'Creator' : b.id === 'burn' ? 'Burn' : b.id === 'community' ? 'Community Pool' : b.label);
-  const fee = econ.type === 'economy' ? 'tax' : 'fee';
   const rows = econ.generation === 2 ? BUCKETS.filter((b) => b.id === 'creator' || econ.shares[b.id] > 0) : BUCKETS;
   return (
-    <div className="pl-launch-table pl-launch-share-table">
-      <div className="pl-launch-table-head pl-launch-share-grid">
-        <span>Bucket</span>
+    <div className="pl-launch-split-table">
+      <div className="pl-launch-split-row head">
+        <span />
         <span className="num">Share</span>
-        <span className="num">Buy {fee}</span>
-        <span className="num">Sell {fee}</span>
+        <span className="num">Buy tax</span>
+        <span className="num">Sell tax</span>
       </div>
-      {rows.map((b) => {
-        const off = !(econ.shares[b.id] > 0);
-        return (
-          <div key={b.id} className={`pl-launch-table-row pl-launch-share-grid ${off ? 'off' : ''}`.trim()}>
-            <span className="pl-econ-bucket-label">
-              <span className={`pl-econ-dot ${b.tone}`} />
-              {label(b)}
-              {b.id === 'creator' && econ.xPct > 0 && <span className="pl-launch-muted pl-launch-small">, {econ.xPct}% of it to X accounts</span>}
-            </span>
-            <span className="num mono">{Number(Number(econ.shares[b.id] || 0).toFixed(2))}%</span>
-            <span className="num mono">{tradePct(buy[b.id] || 0)}</span>
-            <span className="num mono">{tradePct(sell[b.id] || 0)}</span>
-          </div>
-        );
-      })}
-      <div className="pl-launch-table-row pl-launch-share-grid pl-launch-share-total">
-        <span className="pl-launch-strong">After Place</span>
-        <span className="num mono">100%</span>
-        <span className="num mono pl-launch-strong">{tradePct(buy.rest)}</span>
-        <span className="num mono pl-launch-strong">{tradePct(sell.rest)}</span>
+      {rows.map((b) => (
+        <div key={b.id} className="pl-launch-split-row">
+          <span className="pl-econ-bucket-label">
+            <span className={`pl-econ-dot ${b.tone}`} />
+            {econ.generation === 2 && b.id === 'community' ? 'Community fund' : ROW_LABEL[b.id]}
+          </span>
+          <span className="num mono pl-launch-strong">{Number(Number(econ.shares[b.id] || 0).toFixed(2))}%</span>
+          <span className="num mono">{tradePct(buy[b.id] || 0)}</span>
+          <span className="num mono">{tradePct(sell[b.id] || 0)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A small label over a value. */
+function Figure({ label, value, sub }) {
+  return (
+    <div className="pl-launch-figure">
+      <dt>{label}</dt>
+      <dd className="mono">{value}</dd>
+      {sub && <dd className="pl-launch-figure-sub">{sub}</dd>}
+    </div>
+  );
+}
+
+/** Standard 0.3.x tokens: the trading fee, anti-snipe, then the base fee split. */
+function StandardFees({ data, econ }) {
+  const t = data.token;
+  const pool = usePoolConfig(t.poolId, t.hook);
+  const fee = econ.buyTax;
+  const platform = fee ? (econ.perTrade.buy.protocol / fee) * 100 : 30;
+  return (
+    <div className="pl-launch-tab-body">
+      <dl className="pl-launch-figures">
+        <Figure label="Trading fee" value={tradePct(fee)} />
+        <Figure label="Anti-snipe window" value={antiSnipeText(econ, pool)} />
+      </dl>
+      <div className="pl-launch-tab-section">
+        <span className="pl-launch-strong">Base fee split</span>
+        <dl className="pl-launch-figures">
+          <Figure label="Creator share" value={`${(100 - platform).toFixed(2)}%`} />
+          <Figure label="Platform share" value={`${platform.toFixed(2)}%`} />
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+/** Economy tokens (and 0.2.0): the taxes small, the donut after protocol beside the split. */
+export function EconomyTab({ data, econ }) {
+  const t = data.token;
+  const pool = usePoolConfig(econ ? t.poolId : null, t.hook);
+  if (!econ) return <LegacyEconomy data={data} />;
+  if (econ.type === 'standard' && econ.generation >= 3) return <StandardFees data={data} econ={econ} />;
+  const economy = econ.type === 'economy';
+  const { buy, sell } = econ.perTrade;
+  const same = Math.abs(buy.rest - sell.rest) < 1e-9;
+  return (
+    <div className="pl-launch-tab-body">
+      <dl className="pl-launch-figures">
+        <Figure label={economy ? 'Buy tax' : 'Buy fee'} value={tradePct(econ.buyTax)} sub={`Includes ${tradePct(buy.protocol)} protocol`} />
+        <Figure label={economy ? 'Sell tax' : 'Sell fee'} value={tradePct(econ.sellTax)} sub={`Includes ${tradePct(sell.protocol)} protocol`} />
+        {econ.generation >= 3 && <Figure label="Anti-snipe window" value={antiSnipeText(econ, pool)} />}
+      </dl>
+      <div className="pl-launch-tab-section">
+        <span className="pl-launch-strong">Split after protocol</span>
+        <p className="pl-launch-section-desc">These shares split the tax left after protocol. Buy and sell columns show each share as a percent of the trade. Fixed at launch.</p>
+      </div>
+      <div className="pl-econ-palette pl-launch-split">
+        <AllocationRing allocation={econ.shares} center={same ? tradePct(buy.rest) : `${tradePct(buy.rest)} / ${tradePct(sell.rest)}`} label="After protocol" />
+        <ShareTable econ={econ} />
       </div>
     </div>
   );
@@ -136,205 +184,6 @@ function LegacyEconomy({ data }) {
               <dd className="mono">{amount(units(totals.toCampaigns, q.decimals), q.symbol)}</dd>
             </div>
           </>
-        )}
-      </dl>
-    </div>
-  );
-}
-
-/** 0.2.0: the community fund and the dates of the daily burn and the default campaign. */
-function FundFacts({ data, econ, now }) {
-  const t = data.token;
-  const q = t.quote;
-  const fund = data.fund;
-  const totals = data.vault?.totals;
-  const nextProcess = fund?.process?.nextAt ? new Date(fund.process.nextAt).getTime() : null;
-  if (!fund && !totals) return null;
-  return (
-    <dl className="pl-place-kv">
-      {fund && (
-        <div>
-          <dt>
-            <Users size={13} /> Community fund
-          </dt>
-          <dd className="mono">
-            {amount(units(fund.balance, q.decimals), q.symbol)}
-            {fund.pending !== '0' && <span className="pl-launch-muted"> +{amount(units(fund.pending, q.decimals), q.symbol)} pending</span>}
-          </dd>
-        </div>
-      )}
-      {totals && (
-        <>
-          <div>
-            <dt>Fees collected by the vault</dt>
-            <dd className="mono">{amount(units(totals.collected, q.decimals), q.symbol)}</dd>
-          </div>
-          <div>
-            <dt>Sent to the fund</dt>
-            <dd className="mono">{amount(units(totals.toFund, q.decimals), q.symbol)}</dd>
-          </div>
-        </>
-      )}
-      {fund && econ.shares.burn > 0 && (
-        <div>
-          <dt>
-            <Clock size={13} /> Next burn
-          </dt>
-          <dd>{nextProcess && nextProcess > now ? formatUtc(fund.process.nextAt) : 'Due now, Place runs it daily'}</dd>
-        </div>
-      )}
-      {fund && econ.shares.community > 0 && (
-        <div>
-          <dt>Default campaign</dt>
-          <dd>{new Date(fund.defaultCampaign.nextAt).getTime() > now ? `If unused until ${formatUtc(fund.defaultCampaign.nextAt)}` : 'Anyone can start it now'}</dd>
-        </div>
-      )}
-    </dl>
-  );
-}
-
-/** Standard 0.3.x tokens: one trading fee and its split between the creator and the platform (like a plain fee tab). */
-function StandardFees({ data, econ }) {
-  const t = data.token;
-  const pool = usePoolConfig(t.poolId, t.hook);
-  const fee = econ.buyTax;
-  const platform = fee ? (econ.perTrade.buy.protocol / fee) * 100 : 30;
-  const creator = 100 - platform;
-  const snipe = antiSnipeText(econ, pool);
-  return (
-    <div className="pl-launch-tab-body pl-econ-palette">
-      <div className="pl-launch-section-head">
-        <p className="pl-launch-section-desc">A Standard token: one fee on every buy and sell, fixed at launch. No taxes, rewards or burn.</p>
-        <span className="pl-launch-inline">
-          <Badge tone="neutral">Standard</Badge>
-          <Badge tone="success">
-            <Lock size={11} /> Immutable
-          </Badge>
-        </span>
-      </div>
-      <div className="pl-launch-tab-tiles three">
-        <Tile label="Trading fee" value={tradePct(fee)} sub="on every buy and sell" />
-        <Tile label="Anti-snipe window" value={snipe.value} sub={snipe.sub} />
-        <Tile label="Paid in" value={t.quote.symbol} sub="the pool's pair asset" />
-      </div>
-      <div className="pl-launch-tab-section">
-        <span className="pl-launch-field-label">Fee split</span>
-        <div className="pl-launch-tab-tiles three">
-          <Tile label="Creator share" value={`${Number(creator.toFixed(2))}%`} sub={`${tradePct(econ.perTrade.buy.rest)} of each trade`} />
-          <Tile label="Platform share" value={`${Number(platform.toFixed(2))}%`} sub={`${tradePct(econ.perTrade.buy.protocol)} of each trade`} />
-        </div>
-      </div>
-      {data.revenue && <RevenueList data={data} econ={econ} />}
-    </div>
-  );
-}
-
-export function EconomyTab({ data, econ, now, rewardInfo }) {
-  const t = data.token;
-  const q = t.quote;
-  const pool = usePoolConfig(econ ? t.poolId : null, t.hook);
-  const community = useCommunityBalance(econ?.generation >= 3 && econ.shares.community > 0 ? econ.communityVault || data.communityVault : null);
-  if (!econ) return <LegacyEconomy data={data} />;
-  if (econ.type === 'standard' && econ.generation >= 3) return <StandardFees data={data} econ={econ} />;
-  const economy = econ.type === 'economy';
-  const rewards = econ.shares.holders > 0 || econ.shares.traders > 0;
-  const { buy, sell } = econ.perTrade;
-  const same = Math.abs(buy.rest - sell.rest) < 1e-9;
-  const snipe = antiSnipeText(econ, pool);
-  const vault = econ.communityVault || data.communityVault;
-  const desc =
-    econ.generation === 2
-      ? 'Each trade pays 1%. Place takes its part first; the creator vault splits the rest like this. The burn and fund shares can only go up.'
-      : 'Every buy and sell pays a tax. Place takes its part first, the rest is split between the buckets below. Everything here was fixed at launch.';
-  return (
-    <div className="pl-launch-tab-body pl-econ-palette">
-      <div className="pl-launch-section-head">
-        <p className="pl-launch-section-desc">{desc}</p>
-        <span className="pl-launch-inline">
-          {econ.generation >= 3 && <Badge tone="accent">Economy</Badge>}
-          {econ.generation >= 3 ? (
-            <Badge tone="success">
-              <Lock size={11} /> Immutable
-            </Badge>
-          ) : (
-            <Badge tone="neutral">{t.version}</Badge>
-          )}
-        </span>
-      </div>
-      <div className="pl-launch-tab-tiles three">
-        <Tile label={economy ? 'Buy tax' : 'Buy fee'} value={tradePct(econ.buyTax)} sub={`includes ${tradePct(buy.protocol)} Place`} />
-        <Tile label={economy ? 'Sell tax' : 'Sell fee'} value={tradePct(econ.sellTax)} sub={`includes ${tradePct(sell.protocol)} Place`} />
-        {econ.generation >= 3 && <Tile label="Anti-snipe window" value={snipe.value} sub={snipe.sub} />}
-      </div>
-      <div className="pl-econ-alloc pl-launch-econ-alloc">
-        <AllocationRing
-          allocation={econ.shares}
-          center={same ? tradePct(buy.rest) : `${tradePct(buy.rest)} / ${tradePct(sell.rest)}`}
-          label={same ? 'of each trade after Place' : 'buy / sell after Place'}
-        />
-        <ShareTable econ={econ} />
-      </div>
-      {economy && (rewards || vault) && (
-        <div className="pl-launch-tab-tiles pl-launch-econ-rules">
-          {econ.shares.holders > 0 && (
-            <Tile
-              icon={<Gift size={14} className="pl-econ-icon holders" />}
-              label="Minimum holding"
-              value={econ.minHolding ? `${compact(units(econ.minHolding, 18, 0))} ${t.symbol}` : '—'}
-              sub="for holder rewards, at 00:00 UTC"
-            />
-          )}
-          {econ.shares.traders > 0 && (
-            <Tile
-              icon={<BarChart3 size={14} className="pl-econ-icon traders" />}
-              label="Minimum daily volume"
-              value={econ.minTraderDailyVolume && BigInt(econ.minTraderDailyVolume) > 0n ? amount(units(econ.minTraderDailyVolume, q.decimals), q.symbol) : 'Any trade'}
-              sub="buys and sells in a UTC day"
-            />
-          )}
-          {rewards && <Tile icon={<Coins size={14} />} label="Reward token" value={rewardTokenLabel(econ, t, rewardInfo)} sub="what holders and traders get" />}
-          {vault && econ.shares.community > 0 && (
-            <Tile
-              icon={<Users size={14} className="pl-econ-icon community" />}
-              label="Community Pool"
-              value={community.data ? amount(units(community.data.total, q.decimals), q.symbol) : community.isLoading ? '…' : '—'}
-              sub={<AddressLink address={vault} />}
-            />
-          )}
-        </div>
-      )}
-      {econ.generation === 2 && <FundFacts data={data} econ={econ} now={now} />}
-      {econ.generation >= 3 && data.revenue && <RevenueList data={data} econ={econ} />}
-    </div>
-  );
-}
-
-/** Lifetime credits per bucket (0.3.x), without Place (its revenue is in the token's Info block). */
-function RevenueList({ data, econ }) {
-  const t = data.token;
-  const q = t.quote;
-  const r = data.revenue;
-  const rows = [
-    ['Creator', r.creator, econ.shares.creator > 0],
-    ['Holder rewards', r.holders, econ.shares.holders > 0],
-    ['Trader rewards', r.traders, econ.shares.traders > 0],
-    ['Community Pool', r.community, econ.shares.community > 0],
-  ].filter((x) => x[2]);
-  return (
-    <div className="pl-launch-tab-section">
-      <span className="pl-launch-field-label">Collected since launch</span>
-      <dl className="pl-place-kv">
-        {rows.map(([label, raw]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd className="mono">{quoteText(String(raw), q)}</dd>
-          </div>
-        ))}
-        {econ.shares.burn > 0 && (
-          <div>
-            <dt>Burn</dt>
-            <dd className="mono">{amount(units(r.burnTokens, 18, 2), t.symbol)}</dd>
-          </div>
         )}
       </dl>
     </div>
@@ -433,79 +282,61 @@ export function BurnTab({ data, econ, now }) {
 
 // ─────────────────────────────── Disclosures ───────────────────────────────
 
+/** Disclosures under the tabs: bold titles with a short text, two columns, no cards. */
 export function Disclosures({ data, econ }) {
   const t = data.token;
   const economy = econ?.type === 'economy';
+  const v3 = econ?.generation >= 3;
   const items = [
-    { Icon: Lock, title: 'Liquidity locked', text: 'All liquidity sits in the token’s Place pool on Uniswap v4 and can never be withdrawn, by the creator or by Place.' },
     {
-      Icon: Coins,
+      title: 'Locked liquidity and limited control',
+      text: 'The liquidity position is locked for good. The creator cannot mint more tokens, pause or freeze trading, or remove liquidity.',
+    },
+    {
       title: 'No reserved supply',
-      text: `All 1,000,000,000 tokens went into the pool at launch. The creator got no allocation${t.devBuy ? `; they bought ${compact(units(t.devBuy.amountOut, 18, 0))} ${t.symbol} through the pool at launch, like any buyer` : ''}.`,
+      text: `No tokens were sent to wallets or vested at launch: all ${compact(t.supply || 1e9)} went into the pool${t.devBuy ? `. The creator bought ${compact(units(t.devBuy.amountOut, 18, 0))} ${t.symbol} through the pool, like any buyer` : ''}.`,
     },
     {
-      Icon: ShieldCheck,
-      title: econ?.antiSnipe === false ? 'No anti-snipe fee' : 'Anti-snipe fee',
-      text:
-        econ?.antiSnipe === false
-          ? 'The creator turned the anti-snipe fee off: the first trades pay the normal fee.'
-          : 'Trades in the first seconds after launch pay a much higher fee that falls to the normal fee, so bots gain little from buying first. The extra goes to Place.',
+      title: 'Anti-sniping protection',
+      text: econ?.antiSnipe === false ? 'Disabled for this launch. The normal fee applies from the first trade.' : 'For the first seconds after launch the fee starts very high and falls to the normal fee, so buying first gains little.',
     },
     {
-      Icon: Repeat,
       title: 'Fee split',
       text: !econ
-        ? 'Each trade pays 1%: 0.25% to Place and 0.75% to the creator vault (0.1.0).'
+        ? 'Each trade pays 1%: 0.25% to the protocol and 0.75% to the creator vault.'
         : economy
-          ? `Buy tax ${tradePct(econ.buyTax)}, sell tax ${tradePct(econ.sellTax)}. Place takes 30% of the tax; the rest goes to the buckets on the Economy tab.`
-          : econ.generation === 2
-            ? 'Each trade pays 1%: 0.3% to Place, 0.7% to the creator vault (creator, burn and community fund).'
-            : 'Each trade pays 1%: 0.3% to Place and 0.7% to the creator.',
+          ? `Buy tax ${tradePct(econ.buyTax)} and sell tax ${tradePct(econ.sellTax)}, protocol included. The rest is split as shown on the Economy tab.`
+          : `Each trade pays ${tradePct(econ.buyTax)}, protocol included. The rest goes to the creator${econ.generation === 2 ? ' vault (creator, burn and community fund)' : ''}.`,
     },
     {
-      Icon: Sparkles,
-      title: 'Where the fee applies',
-      text: 'Only on buys and sells in the token’s Place pool. Sending the token between wallets is free, and pools made elsewhere pay nothing to this token.',
+      title: 'Where tax applies',
+      text: 'Only to buys and sells in this launch pool. Wallet transfers and pools made elsewhere pay nothing.',
     },
-    {
-      Icon: Flame,
+    (v3 ? econ.shares.burn > 0 : econ?.shares.burn > 0) && {
       title: 'Burn',
-      text:
-        econ?.generation >= 3
-          ? econ.shares.burn > 0
-            ? `${econ.shares.burn}% of the tax after Place is taken in the token itself and sent to 0x…dEaD when anyone presses Burn tokens. There is no buyback.`
-            : 'No part of the tax is burned.'
-          : econ?.shares.burn > 0
-            ? `${econ.shares.burn}% of the creator vault’s fees buy the token back in its pool once a day and burn it.`
-            : 'No burn share.',
+      text: v3 ? `The burn allocation collects ${t.symbol} from the tax. Anyone can send it to 0x…dEaD from the Burn tab.` : 'Part of the creator vault’s fees buys the token back once a day and burns it.',
     },
+    economy &&
+      (econ.shares.holders > 0 || econ.shares.traders > 0) && {
+        title: 'Holder and trader rewards',
+        text: 'Each UTC day’s table is computed from the chain and published on IPFS with a Merkle root. Rewards are shared after 00:00 UTC and never expire.',
+      },
     {
-      Icon: Lock,
       title: 'What can change',
-      text:
-        econ?.generation >= 3
-          ? `Nothing in the fees: taxes, shares and reward rules were fixed at launch. ${t.metadataEditable ? 'The name and logo can be edited; the ticker cannot.' : 'Name, logo and ticker are fixed too.'}`
-          : `${econ ? 'The burn and fund shares can only go up.' : 'The fee split is fixed.'} ${t.metadataEditable ? 'The name and logo can be edited; the ticker cannot.' : 'Name, logo and ticker are fixed.'}`,
+      text: `${v3 ? 'Nothing in the fees.' : econ ? 'The burn and fund shares can only go up.' : 'The fee split is fixed.'} ${t.metadataEditable ? 'The name and logo can be edited; the ticker cannot.' : 'Name, logo and ticker are fixed.'}`,
     },
-  ];
-  if (econ && (econ.shares.holders > 0 || econ.shares.traders > 0)) {
-    items.push({
-      Icon: FileText,
-      title: 'How daily rewards are counted',
-      text: 'Place computes each UTC day’s holder and trader table from the chain and publishes it on IPFS with a Merkle root. The rewards contract never pays out more than the tax funded, and rewards never expire.',
-    });
-  }
+  ].filter(Boolean);
   return (
-    <ul className="pl-launch-disclosures">
-      {items.map(({ Icon, title, text }) => (
-        <li key={title}>
-          <Icon size={16} />
-          <span>
+    <div className="pl-launch-disclosures-block">
+      <span className="pl-launch-section-title">Disclosures</span>
+      <ul className="pl-launch-disclosures">
+        {items.map(({ title, text }) => (
+          <li key={title}>
             <span className="pl-launch-strong">{title}</span>
             <span className="pl-launch-muted">{text}</span>
-          </span>
-        </li>
-      ))}
-    </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

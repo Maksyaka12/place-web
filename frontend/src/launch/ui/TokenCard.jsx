@@ -1,28 +1,47 @@
-// One token in the launchpad feed: the Grid card (artwork with name and ticker, then market cap, price, liquidity and
-// volume) and the Cards view row card (logo, name, market cap and the numbers in one row).
-import { Link } from 'react-router-dom';
-import { Clock } from 'lucide-react';
+// One token in the launchpad feed: the Grid card (artwork with NEW / Tax badges, name and $symbol
+// with copy, market cap with its scale bar, price and liquidity, lifetime and 24 h volume, the pair chip and the age)
+// and the Cards view card (rank, age and star on top, logo and $symbol, market cap on a 10K-10M scale, liquidity,
+// volume, trades, "Base / PAIR" and Trade).
+import { useNavigate } from 'react-router-dom';
+import { Clock, Zap } from 'lucide-react';
 import { Badge } from '../../themes/place/components/ui';
-import { TokenArt, TokenLogo, NewBadge, Change, Stat, launchTokenPath } from './parts.jsx';
-import { usd, price as priceText, amount, age, compact } from '../format.js';
+import { TokenArt, TokenLogo, NewBadge, TaxBadge, PairChip, StarButton, CopyInline, McBar, mcScale, agoText, isEconomy, launchTokenPath } from './parts.jsx';
+import { usd, price as priceText, amount, compact } from '../format.js';
 
 /** A USD value when the pair has a USD price, else the amount in the pair asset. */
 export const money = (valueUsd, value, symbol) => (valueUsd != null ? usd(valueUsd) : amount(value, symbol));
 
+/** A whole card that opens the token page (inner buttons stop the click). */
+function useOpen(t) {
+  const navigate = useNavigate();
+  const to = launchTokenPath(t.address);
+  return {
+    role: 'link',
+    tabIndex: 0,
+    'aria-label': `${t.name} (${t.symbol})`,
+    onClick: () => navigate(to),
+    onKeyDown: (e) => e.key === 'Enter' && navigate(to),
+  };
+}
+
 export function TokenCard({ t, now }) {
   const q = t.quote?.symbol || '';
+  const open = useOpen(t);
   return (
-    <Link to={launchTokenPath(t.address)} className={`card card-hover pl-launch-card ${t.liveTick ? 'live' : ''}`.trim()} data-testid="launch-card">
+    <div className={`card card-hover pl-launch-card ${t.liveTick ? 'live' : ''}`.trim()} data-testid="launch-card" {...open}>
       <div className="pl-launch-art">
         <TokenArt token={t} />
         <div className="pl-launch-art-overlay" />
         <div className="pl-launch-art-badges">
           <NewBadge createdAt={t.createdAt} now={now} />
-          <Badge tone="neutral">{t.kind === 'b20' ? 'B20' : 'ERC-20'}</Badge>
+          <TaxBadge token={t} />
         </div>
         <div className="pl-launch-art-title">
           <span className="pl-launch-art-name">{t.name}</span>
-          <span className="pl-launch-art-symbol">${t.symbol}</span>
+          <span className="pl-launch-art-symbol">
+            ${t.symbol}
+            <CopyInline value={t.address} />
+          </span>
         </div>
       </div>
       <div className="pl-launch-card-body">
@@ -31,58 +50,111 @@ export function TokenCard({ t, now }) {
             {money(t.marketCapUsd, t.marketCap, q)}
           </span>
           <span className="pl-launch-card-mc-label">MC</span>
-          <Change value={t.change24h} className="pl-launch-card-change" />
+          <McBar usdValue={t.marketCapUsd} />
         </div>
         <div className="pl-launch-card-line">
-          <span className="mono">{t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q)}</span>
+          <span className="mono pl-launch-muted">{t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q)}</span>
           <span className="pl-launch-muted">
-            Liq <span className="mono pl-launch-strong">{money(t.liquidity?.valueUsd, t.liquidity?.value, q)}</span>
+            Liq <span className="mono">{money(t.liquidity?.valueUsd, t.liquidity?.value, q)}</span>
           </span>
         </div>
         <div className="pl-launch-card-stats">
-          <Stat label="Lifetime" value={money(t.volumeAllUsd, t.volumeAll, q)} />
-          <Stat label="Vol 24h" value={money(t.volume24hUsd, t.volume24h, q)} className="right" />
+          <div className="pl-launch-stat">
+            <span className="pl-launch-stat-label">Lifetime</span>
+            <span className="pl-launch-stat-value mono">{money(t.volumeAllUsd, t.volumeAll, q)}</span>
+          </div>
+          <div className="pl-launch-stat right">
+            <span className="pl-launch-stat-label">Vol 24h</span>
+            <span className="pl-launch-stat-value mono">{money(t.volume24hUsd, t.volume24h, q)}</span>
+          </div>
         </div>
         <div className="pl-launch-card-foot">
-          <span className="pl-launch-pair">{q || 'Pair'}</span>
-          <span className="pl-launch-muted pl-launch-age">
-            <Clock size={12} />
-            {age(t.createdAt, now)}
-          </span>
+          <PairChip quote={t.quote} />
+          <span className="pl-launch-muted pl-launch-small">{agoText(t.createdAt, now)}</span>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
-/** The Cards view: a wide card with the logo, name, market cap and the numbers in one row. */
-export function TokenRowCard({ t, now }) {
+const SCALE = ['10M', '5M', '1M', '100K', '10K'];
+
+/** The Cards view: rank, age and star; logo and $symbol; market cap with its vertical scale; the numbers; Trade. */
+export function TokenRowCard({ t, now, rank, watch }) {
   const q = t.quote?.symbol || '';
+  const open = useOpen(t);
+  const level = mcScale(t.marketCapUsd);
   return (
-    <Link to={launchTokenPath(t.address)} className={`card card-hover pl-launch-rowcard ${t.liveTick ? 'live' : ''}`.trim()} data-testid="launch-card">
-      <div className="pl-launch-rowcard-head">
-        <TokenLogo token={t} size={48} />
-        <span className="pl-launch-rowcard-name">
-          <span className="pl-launch-strong pl-launch-ellipsis">{t.name}</span>
-          <span className="pl-launch-muted pl-launch-small pl-launch-inline">
-            ${t.symbol} · {q}
-            <NewBadge createdAt={t.createdAt} now={now} />
-          </span>
+    <div className={`card card-hover pl-launch-rowcard ${t.liveTick ? 'live' : ''}`.trim()} data-testid="launch-card" {...open}>
+      <div className="pl-launch-rowcard-top">
+        <span className="pl-launch-rowcard-rank mono">#{String(rank).padStart(2, '0')}</span>
+        <span className="pl-launch-rowcard-age">
+          <Clock size={12} />
+          {agoText(t.createdAt, now)}
         </span>
-        <span className="pl-launch-rowcard-mc">
-          <span key={t.liveTick?.cursor} className={`mono pl-launch-strong ${t.liveTick ? `pl-launch-flash ${t.liveTick.side}` : ''}`.trim()}>
+        <StarButton address={t.address} watch={watch} />
+      </div>
+      <div className="pl-launch-rowcard-main">
+        <div className="pl-launch-rowcard-left">
+          <div className="pl-launch-rowcard-head">
+            <TokenLogo token={t} size={56} />
+            <span className="pl-launch-rowcard-name">
+              <span className="pl-launch-inline pl-launch-rowcard-badges">
+                <NewBadge createdAt={t.createdAt} now={now} />
+                <TaxBadge token={t} />
+              </span>
+              <span className="pl-launch-rowcard-symbol">${t.symbol}</span>
+              <span className="pl-launch-muted pl-launch-small pl-launch-rowcard-sub">
+                <span className="pl-launch-ellipsis">{t.name}</span>
+                <CopyInline value={t.address} />
+              </span>
+            </span>
+          </div>
+          <span className="pl-launch-stat-label">Market cap</span>
+          <span key={t.liveTick?.cursor} className={`pl-launch-rowcard-mc mono ${t.liveTick ? `pl-launch-flash ${t.liveTick.side}` : ''}`.trim()}>
             {money(t.marketCapUsd, t.marketCap, q)}
           </span>
-          <Change value={t.change24h} />
-        </span>
+          <span className="pl-launch-muted pl-launch-small mono">
+            {t.priceUsd != null ? usd(t.priceUsd) : '—'} / {priceText(t.price, q)}
+          </span>
+        </div>
+        {level != null && (
+          <div className="pl-launch-rowcard-scale" aria-hidden="true">
+            <span className="pl-launch-rowcard-scale-labels mono">
+              {SCALE.map((s) => (
+                <span key={s}>{s}</span>
+              ))}
+            </span>
+            <span className="pl-launch-rowcard-scale-bar">
+              <span style={{ height: `${Math.max(4, level * 100)}%` }} />
+            </span>
+          </div>
+        )}
       </div>
       <div className="pl-launch-rowcard-stats">
-        <Stat label="Price" value={t.priceUsd != null ? usd(t.priceUsd) : priceText(t.price, q)} />
-        <Stat label="Vol 24h" value={money(t.volume24hUsd, t.volume24h, q)} />
-        <Stat label="Liquidity" value={money(t.liquidity?.valueUsd, t.liquidity?.value, q)} />
-        <Stat label="Holders" value={compact(t.holders)} />
-        <Stat label="Age" value={age(t.createdAt, now)} />
+        <div className="pl-launch-stat">
+          <span className="pl-launch-stat-label">Liquidity</span>
+          <span className="pl-launch-stat-value mono">{money(t.liquidity?.valueUsd, t.liquidity?.value, q)}</span>
+        </div>
+        <div className="pl-launch-stat">
+          <span className="pl-launch-stat-label">Vol 24h / Lifetime</span>
+          <span className="pl-launch-stat-value mono">
+            <span className="pl-launch-buy">{money(t.volume24hUsd, t.volume24h, q)}</span> / {money(t.volumeAllUsd, t.volumeAll, q)}
+          </span>
+        </div>
+        <div className="pl-launch-stat">
+          <span className="pl-launch-stat-label">Trades 24h</span>
+          <span className="pl-launch-stat-value mono">{compact(t.trades24h ?? 0)}</span>
+        </div>
       </div>
-    </Link>
+      <div className="pl-launch-rowcard-foot">
+        <PairChip quote={t.quote} chain />
+        {isEconomy(t) ? <Badge tone="warn">Tax</Badge> : <Badge tone="success">LP locked</Badge>}
+        <span className="pl-launch-trade-btn">
+          <Zap size={13} />
+          Trade
+        </span>
+      </div>
+    </div>
   );
 }

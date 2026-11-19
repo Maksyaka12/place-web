@@ -4,7 +4,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { smallNumber, compact } from '../format.js';
 
-const H = 320;
+const DEFAULT_H = 320;
 const VOL_H = 56;
 const AXIS_W = 72;
 const AXIS_H = 22;
@@ -29,7 +29,8 @@ function ticks(lo, hi, n = 5) {
   return out;
 }
 
-export function CandleChart({ candles = [], interval, scale = 1, unit = '', loading }) {
+export function CandleChart({ candles = [], interval, scale = 1, unit = '', loading, height = DEFAULT_H, since = null }) {
+  const H = height;
   const wrap = useRef(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState(null);
@@ -45,7 +46,7 @@ export function CandleChart({ candles = [], interval, scale = 1, unit = '', load
     const plotW = width - AXIS_W;
     // Show as many candles as fit at ~6 px each, newest on the right.
     const fit = Math.max(20, Math.floor(plotW / 6));
-    const list = candles.slice(-fit).map((c) => ({ ...c, o: c.o * scale, h: c.h * scale, l: c.l * scale, c: c.c * scale }));
+    const list = (since ? candles.filter((c) => c.t >= since) : candles).slice(-fit).map((c) => ({ ...c, o: c.o * scale, h: c.h * scale, l: c.l * scale, c: c.c * scale }));
     if (!list.length) return null;
     let lo = Math.min(...list.map((c) => c.l));
     let hi = Math.max(...list.map((c) => c.h));
@@ -65,7 +66,7 @@ export function CandleChart({ candles = [], interval, scale = 1, unit = '', load
     const body = Math.max(1, Math.min(9, slot * 0.66));
     const labelEvery = Math.max(1, Math.round(90 / slot));
     return { list, y, x, slot, body, maxV, lo, hi, plotW, labelEvery, offset };
-  }, [candles, width, scale]);
+  }, [candles, width, scale, H, since]);
 
   const onMove = (e) => {
     if (!view) return;
@@ -76,7 +77,7 @@ export function CandleChart({ candles = [], interval, scale = 1, unit = '', load
   };
 
   const hc = view && hover != null ? view.list[hover] : view?.list[view.list.length - 1];
-  const fmt = (v) => `${unit === '$' ? '$' : ''}${smallNumber(v)}${unit && unit !== '$' ? ` ${unit}` : ''}`;
+  const fmt = (v) => `${unit === '$' ? '$' : ''}${Math.abs(v) >= 1000 ? compact(v) : smallNumber(v)}${unit && unit !== '$' ? ` ${unit}` : ''}`;
 
   return (
     <div className="pl-launch-chart" ref={wrap}>
