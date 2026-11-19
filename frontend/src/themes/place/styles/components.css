@@ -328,6 +328,46 @@
   color: var(--text);
 }
 
+/* InfoTip: a small (i) with a short explanation on hover, focus or tap */
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: -2px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-full);
+  background: none;
+  color: var(--text-3);
+  cursor: help;
+  vertical-align: middle;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+.info-tip:hover,
+.info-tip:focus-visible {
+  color: var(--text);
+}
+.info-tip-bubble {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: 400 13px/1.45 var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
 /* Progress bar */
 .progress-bar-track {
   width: 100%;

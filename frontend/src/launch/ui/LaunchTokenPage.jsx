@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Globe, Send, Rocket, Maximize2, Minimize2 } from 'lucide-react';
-import { Card, Badge, EmptyState, Button } from '../../themes/place/components/ui';
+import { Card, Badge, EmptyState, Button, InfoTip } from '../../themes/place/components/ui';
 import { CopyAddress, AddressLink, QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { useNow } from '../../place/hooks';
 import { explorerTx } from '../../place/chain';
@@ -285,12 +285,12 @@ function TokenTabs({ data, token, econ, now, collections }) {
     { id: 'transactions', label: 'Transactions' },
     { id: 'holders', label: 'Holders' },
     { id: 'economy', label: 'Economy' },
-    (economy || (legacy && (econ?.shares.burn > 0 || token.economics?.buybackBps > 0 || data.burns?.count > 0))) && { id: 'burn', label: 'Burn' },
+    ((economy && econ.shares.burn > 0) || (legacy && (econ?.shares.burn > 0 || token.economics?.buybackBps > 0 || data.burns?.count > 0))) && { id: 'burn', label: 'Burn' },
     economy && econ.shares.holders > 0 && { id: 'holders-rewards', label: 'Holder rewards' },
     economy && econ.shares.traders > 0 && { id: 'traders-rewards', label: 'Trader rewards' },
     { id: 'staking', label: 'Staking', count: activeStaking(data) || null },
-    collections.length > 0 && { id: 'nft', label: 'NFT' },
-    campaigns.items.length > 0 && { id: 'campaigns', label: 'Campaigns' },
+    { id: 'nft', label: 'NFT' },
+    { id: 'campaigns', label: 'Campaigns' },
   ].filter(Boolean);
   const active = tabs.some((x) => x.id === params.get('tab')) ? params.get('tab') : 'transactions';
   const strip = useRef(null);
@@ -340,7 +340,7 @@ function TokenTabs({ data, token, econ, now, collections }) {
         {active === 'holders-rewards' && <RewardsTab data={data} econ={econ} kind="holders" now={now} />}
         {active === 'traders-rewards' && <RewardsTab data={data} econ={econ} kind="traders" now={now} />}
         {active === 'staking' && <StakingTab data={data} />}
-        {active === 'nft' && <NftTab token={token} collections={collections} />}
+        {active === 'nft' && <NftTab token={token} collections={collections} now={now} />}
         {active === 'campaigns' && <CampaignsTab data={data} campaigns={campaigns} />}
       </div>
     </Card>
@@ -351,6 +351,28 @@ function TokenTabs({ data, token, econ, now, collections }) {
 function pairSub(valueUsd, value, q, decimals = 4) {
   return valueUsd != null && value != null ? `${compact(value, { decimals })} ${q.symbol}` : null;
 }
+
+/** Short explanations behind the (i) of the stat row and Info. */
+const TIPS = {
+  'Market cap': 'Current token price multiplied by the fixed launch supply. USD uses the current paired-asset price.',
+  'Token price': 'Price of one token in the pool right now, in USD and in the paired asset.',
+  'Volume 24h': 'Value of all buys and sells in the last 24 hours, in the paired asset and its USD value.',
+  'Pool liquidity': 'Value of everything in the token pool: the paired asset plus the tokens, priced at the current pool price.',
+  'Total supply': 'Every launch mints a fixed 1 billion tokens. Nobody can mint more.',
+  Holders: 'Wallets that hold any amount of the token right now.',
+  'Buy / sell tax': "Taken on every buy and every sell by the Place hook and split by the token's economy. Fixed at launch.",
+  'Trading fee': 'Taken on every buy and sell: 70% goes to the creator and 30% to Place. Fixed at launch.',
+  'Lifetime volume': 'Value of every buy and sell since launch.',
+  'Creator revenue': 'Fees and taxes paid to the creator since launch.',
+  'Protocol revenue': "Place's share of fees and taxes since launch, including the anti-snipe fee of the first seconds.",
+};
+
+const Label = ({ label }) => (
+  <>
+    {label}
+    {TIPS[label] && <InfoTip text={TIPS[label]} label={`About ${label.toLowerCase()}`} />}
+  </>
+);
 
 /** The stat row under the header. Buy / sell tax only for Economy tokens. */
 function Stats({ token: t, econ }) {
@@ -368,7 +390,9 @@ function Stats({ token: t, econ }) {
     <dl className="pl-launch-stats">
       {items.map((s) => (
         <div key={s.label}>
-          <dt>{s.label}</dt>
+          <dt>
+            <Label label={s.label} />
+          </dt>
           <dd className="mono pl-launch-stats-value">{s.value}</dd>
           {s.sub && <dd className="mono pl-launch-stats-sub">{s.sub}</dd>}
         </div>
@@ -420,7 +444,9 @@ function Info({ data, token: t, econ, now }) {
         </div>
         {econ?.type !== 'economy' && (
           <div>
-            <dt>Trading fee</dt>
+            <dt>
+              <Label label="Trading fee" />
+            </dt>
             <dd className="mono">{econ ? tradePct(econ.buyTax) : '1%'}</dd>
           </div>
         )}
@@ -428,7 +454,9 @@ function Info({ data, token: t, econ, now }) {
       <dl className="pl-launch-info-grid">
         {cells.map((c) => (
           <div key={c.label}>
-            <dt>{c.label}</dt>
+            <dt>
+              <Label label={c.label} />
+            </dt>
             <dd className="mono pl-launch-info-value">{c.value}</dd>
             {c.sub && <dd className="mono pl-launch-stats-sub">{c.sub}</dd>}
           </div>

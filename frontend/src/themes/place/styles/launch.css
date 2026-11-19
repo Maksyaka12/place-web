@@ -4696,3 +4696,333 @@
   display: block;
   margin-top: 10px;
 }
+
+/* Swap: title with the gear, Trade settings panel, the asset picker, Max slippage and Trade details rows */
+.pl-launch-swap {
+  position: relative;
+}
+.pl-launch-swap-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pl-launch-swap-gear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.pl-launch-swap-gear:hover,
+.pl-launch-swap-gear[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.pl-launch-swap-settings-panel {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  left: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.pl-launch-swap-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.pl-launch-swap-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pl-launch-swap-mode {
+  display: flex;
+  width: 100%;
+}
+.pl-launch-swap-mode button {
+  flex: 1;
+  justify-content: center;
+}
+.pl-launch-swap-mode button .mono {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.pl-launch-swap-slip-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.3fr);
+  gap: 8px;
+}
+.pl-launch-swap-preset {
+  height: 34px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: 600 13px var(--font-mono);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.pl-launch-swap-preset:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.pl-launch-swap-preset[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.pl-launch-swap-slip-row .pl-launch-swap-slip-input {
+  height: 34px;
+  justify-content: flex-end;
+}
+.pl-launch-swap-slip-row .pl-launch-swap-slip-input input {
+  width: 100%;
+  min-width: 0;
+}
+.pl-launch-swap-slip-input.error {
+  border-color: var(--red-bd);
+}
+.pl-launch-swap-pick {
+  position: relative;
+  flex-shrink: 0;
+}
+.pl-launch-swap-chip.pick {
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pl-launch-swap-chip.pick:hover,
+.pl-launch-swap-chip.pick[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.pl-launch-swap-chip-caret {
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: transform 0.15s ease;
+}
+.pl-launch-swap-chip.pick[aria-expanded="true"] .pl-launch-swap-chip-caret {
+  transform: rotate(180deg);
+}
+.pl-launch-swap-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 25;
+  width: 300px;
+  max-width: calc(100vw - 48px);
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.pl-launch-swap-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.pl-launch-swap-menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pl-launch-swap-menu-title {
+  padding: 10px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pl-launch-swap-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.pl-launch-swap-menu-item:hover,
+.pl-launch-swap-menu-item[aria-selected="true"] {
+  background: var(--surface-2);
+}
+.pl-launch-swap-menu-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  font-size: 14px;
+}
+.pl-launch-swap-menu-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-launch-swap-menu-check {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.pl-launch-swap-slip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: none;
+  border-radius: var(--r-full);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pl-launch-swap-slip-value:hover {
+  background: var(--surface);
+}
+.pl-launch-swap-more-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 0 2px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: 600 13px var(--font-sans);
+  cursor: pointer;
+}
+.pl-launch-swap-more-toggle svg {
+  color: var(--text-3);
+  transition: transform 0.15s ease;
+}
+.pl-launch-swap-more-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.pl-launch-swap-details .pl-launch-swap-kv {
+  display: flex;
+  flex-direction: column;
+  margin: 6px 0 0;
+}
+.pl-launch-swap-details .pl-launch-swap-kv > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.pl-launch-swap-details .pl-launch-swap-kv dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+}
+.pl-launch-swap-details .pl-launch-swap-kv dd {
+  margin: 0;
+  color: var(--text);
+  text-align: right;
+}
+.pl-launch-swap-alert-more {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-2);
+}
+
+/* InfoTip beside stat labels */
+.pl-launch-stats dt,
+.pl-launch-info-grid dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* NFT tab: compact collection head, pool figures, claim */
+.pl-launch-nft-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pl-launch-nft-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pl-launch-nft-name {
+  font-size: 16px;
+  color: var(--text);
+  text-decoration: none;
+}
+.pl-launch-nft-name:hover {
+  color: var(--accent);
+}
+.pl-launch-nft-pick {
+  align-self: flex-start;
+}
+.pl-launch-plain-grid.pl-launch-nft-figures {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 760px;
+}
+.pl-launch-plain-grid .pl-launch-nft-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+@media (max-width: 640px) {
+  .pl-launch-plain-grid.pl-launch-nft-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.pl-launch-swap-slip-value .pl-launch-swap-auto {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+}
+.pl-launch-swap-details .pl-launch-swap-kv dt {
+  white-space: nowrap;
+}
+.pl-launch-nft-head .pl-launch-nft-title {
+  flex: 1 1 220px;
+}

@@ -439,15 +439,28 @@ the same components and tokens as the hub; only these pieces are its own:
     without economy, Trading fee; then Lifetime volume, Creator revenue and Protocol revenue with the pair amount.
   - **Tabs**: 22 px text titles (`.pl-launch-token-tabs`, the open one with a 2 px accent underline) in
     `.pl-launch-tabs-scroll`; `?tab=`. Economy token: Transactions · Holders · Economy · Burn · Holder rewards · Trader
-    rewards (each only with its bucket) · Staking · NFT (with a paired collection) · Campaigns (when there are any).
-    Standard token: Transactions · Holders · Economy · Staking · NFT · Campaigns, the same rules. Transactions has an
+    rewards (each only when its bucket is on) · Staking · NFT · Campaigns. Standard token: Transactions · Holders ·
+    Economy · Staking · NFT · Campaigns (never Burn or rewards). Staking, NFT and Campaigns are always there and show an
+    empty state when there is nothing ("No staking vaults yet", "No NFT collection yet", "No campaigns yet"). Transactions has an
     All / Buy / Sell filter beside its title and its columns: Time, Type, Price and Value (pair amount with "approx $"
     under it), Amount, Wallet.
-  - **Swap** (`SwapPanel.jsx`): no tax or fee text. You pay / You receive boxes with the amount, its USD value, the
-    asset chip (logo, symbol, Base) and the balance; 20% / 50% / MAX on the pay side (MAX keeps a little ETH for gas);
-    a flip button between the boxes switches buy and sell; Max Slippage with Auto (3%) or a value; the folded Trade
-    details (`.pl-launch-swap-more`: the rate "1 X = $… (… PAIR)" as its summary; minimum received, max slippage,
-    route); the button. During the anti-snipe window an amber alert asks to wait a few seconds.
+  - **Swap** (`SwapPanel.jsx`): no tax text. The title with an (i) and, on the right, the gear with the current
+    slippage; it opens **Trade settings** (`.pl-launch-swap-settings-panel`, a floating card over the swap): Max
+    Slippage with Auto / Custom (`.seg`), 1% / 3% / 10% and a % box. Auto is 3% on the token pool, 5% through another
+    pool; the value is what goes into minAmountOut. You pay / You receive boxes with the amount, its USD value, the
+    asset chip and the balance; 20% / 50% / MAX on the pay side (MAX keeps a little ETH for gas); a flip button switches
+    buy and sell. The pair-side chip is a button that opens **Select an asset** (`.pl-launch-swap-menu`): "Crypto and
+    stablecoins" (ETH, USDC, another crypto pair) and "Paired stock" (logo, ticker, company). Another asset than the
+    pair swaps in one multi-hop route through the pools the reward-token registry lists (`routeOf`); without one the
+    menu marks it "No route" and the button says Route unavailable. Under the boxes: Max Slippage (Auto tag and %), then
+    the folded Trade details (Minimum received, Trade fees, External pool fees, Network fees, Price impact, each with an
+    (i)). Price impact is measured against a 1000× smaller trade on the same route: from -5% an amber alert, from -15%
+    a red "Very high price impact (~X%). Try a smaller amount.", and from -50% the button is off. During the anti-snipe
+    window an amber alert asks to wait a few seconds.
+  - **InfoTip** (`InfoTip` in `components/ui`, `.info-tip` in `components.css`): a 13 px (i) after a label; on hover,
+    focus or tap a 13 px bubble on `--surface` (max 280 px, rendered into `document.body`, kept inside the viewport)
+    explains it in one or two sentences. Every stat (Market cap … Buy / sell tax), every Info figure and every swap row
+    has one.
 - **Token page tabs** (`TokenEconomy.jsx`, `TokenRewards.jsx`; body `.pl-launch-tab-body`): **Economy** (Economy
   token) — quiet figures (`.pl-launch-figures`): Buy tax and Sell tax with "Includes X% protocol",
   Anti-snipe window; "Split after protocol" with one sentence; the ring (`AllocationRing` with `center`: the tax after
@@ -460,8 +473,11 @@ the same components and tokens as the hub; only these pieces are its own:
   `launch/rewards?token=` → `today`), a 2×2 plain grid (`.pl-launch-plain-grid`: Claimable rewards, Total earned,
   Minimum holding or Minimum daily volume, Rewards claimed), "Next payout in 07h 45m 03s at 00:00 UTC" and Claim
   rewards. **Staking**, **Campaigns** — hub cards (`HubCard`, 2/1 columns) with Create … and Open in Rewards hub.
-  Campaigns are what goes beyond the token's own economy (`useTokenCampaigns`). **NFT** — the paired collections'
-  `CollectionCard`s. **Disclosures** (`.pl-launch-disclosures-block`, under the tabs, no card) — bold titles and short
+  Campaigns are what goes beyond the token's own economy (`useTokenCampaigns`). **NFT** — a dashboard like the reward tabs:
+  a compact head of the paired collection (44 px logo, name linking to `/collection/<addr>`, Minting / Official, Unique or
+  Edition, Open collection; a `.seg.soft` picks between several, the official first), one sentence on NFT holder rewards,
+  a 3-column plain grid (Rewards pool, Paid per day with per NFT, Accrued today, Your NFTs, You can claim), "Next epoch in
+  … at 00:00 UTC", Claim rewards (`claim(ids)`) and Launch NFT. **Disclosures** (`.pl-launch-disclosures-block`, under the tabs, no card) — bold titles and short
   text as a two-column bulleted list, one column on phones. Creator announcements are not shown on the token page.
 - **Bucket colours** outside the form: wrap in `.pl-econ-palette`. `AllocationBar` (`parts.jsx`) draws the shares as
   one bar with a legend (profile fee cards).

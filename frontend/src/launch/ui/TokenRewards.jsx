@@ -2,20 +2,23 @@
 // figures, the countdown to the next 00:00 UTC payout and Claim rewards), Staking (the token's staking vaults), NFT
 // (collections paired with the token) and Campaigns (rewards beyond the token's own economy: Community Pool and
 // wallet-funded streams, snapshot campaigns). Staking, NFT and Campaigns use the hub's cards.
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Coins, ArrowUpRight, Image as ImageIcon } from 'lucide-react';
-import { Button, EmptyState } from '../../themes/place/components/ui';
+import { Coins, ArrowUpRight, BadgeCheck, Image as ImageIcon } from 'lucide-react';
+import { Badge, Button, EmptyState } from '../../themes/place/components/ui';
 import { TxButton, TxResult, ConnectButton } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx, useCampaigns } from '../../place/hooks';
 import { formatAmount } from '../../place/format';
-import { useRewards, useHubStreams } from '../hooks.js';
+import { useRewards, useHubStreams, useCollection } from '../hooks.js';
+import { NFT_COLLECTION_ABI } from '../nftAbi.js';
+import { MINT_STATUS, POOL_DAYS, poolNumbers, collectionPath } from '../nft.js';
+import { TokenLogo } from './parts.jsx';
 import { REWARDS_DISTRIBUTOR_ABI } from '../abi.js';
 import { STREAM_LABEL } from '../economy.js';
 import { compact, amount } from '../format.js';
 import { units } from './TokenEconomy.jsx';
 import { HubCard, hubItems } from './HubPage.jsx';
 import { PHASE_ORDER, amountText } from './vaults.jsx';
-import { CollectionCard } from './CollectionParts.jsx';
 
 /** "1,234.5 USDC" for a raw amount of a reward token ({ symbol, decimals }). */
 export const rewardText = (raw, r) => `${formatAmount(raw || 0, r?.decimals ?? 18, { maxDecimals: 6 })} ${r?.symbol || ''}`.trim();
@@ -165,25 +168,124 @@ export function StakingTab({ data }) {
   );
 }
 
-export function NftTab({ token, collections }) {
+/** The NFT tab: a dashboard of the paired collection's 30-day holders pool, the wallet's NFTs and Claim. */
+export function NftTab({ token, collections, now }) {
+  const sorted = [...collections].sort((a, b) => Number(b.official) - Number(a.official));
+  const [pick, setPick] = useState(null);
+  const current = sorted.find((c) => c.address === pick) || sorted[0];
+  if (!current) {
+    return (
+      <div className="pl-launch-tab-body">
+        <EmptyState
+          icon={<ImageIcon size={28} />}
+          title="No NFT collection yet"
+          description={`Anyone can launch a collection paired with ${token.symbol}. Its holders share a ${POOL_DAYS}-day rewards pool.`}
+        />
+        <div className="pl-launch-tab-actions">
+          <Button as={Link} to="/launch/nft">
+            <ImageIcon size={15} />
+            Launch NFT
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="pl-launch-tab-body">
-      <div className="pl-launch-nft-grid">
-        {collections.map((c) => (
-          <CollectionCard key={c.address} c={c} />
-        ))}
-      </div>
-      <div className="pl-launch-tab-actions">
-        <Button as={Link} to="/launch/nft">
-          <ImageIcon size={15} />
-          Launch NFT
-        </Button>
-        <Button as={Link} to={`/token/${token.address}`} variant="ghost">
-          Open project page
+      {sorted.length > 1 && (
+        <div className="seg soft pl-launch-nft-pick" role="tablist" aria-label="Collection">
+          {sorted.map((c) => (
+            <button key={c.address} type="button" role="tab" aria-selected={c.address === current.address} onClick={() => setPick(c.address)}>
+              {c.symbol || c.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <NftDashboard key={current.address} base={current} now={now} />
+    </div>
+  );
+}
+
+function NftDashboard({ base, now }) {
+  const { address } = usePlaceAccount();
+  const q = useCollection(base.address, address);
+  const tx = usePlaceTx();
+  const c = q.data?.collection || base;
+  const live = q.data?.live;
+  const you = q.data?.you;
+  const r = c.rewardToken || { symbol: 'ETH', decimals: 18 };
+  const pool = poolNumbers(live?.perDay != null ? { ...c.pool, ...live } : c.pool, r.decimals);
+  const st = MINT_STATUS[c.status] || MINT_STATUS.live;
+  const ids = you?.ids || [];
+  const claimable = you?.claimable != null ? BigInt(you.claimable) : null;
+  const claimIds = ids.filter((x) => x.claimable == null || BigInt(x.claimable) > 0n).map((x) => BigInt(x.id));
+  const sym = r.symbol || '';
+  const mine = (v) => (address ? (q.isLoading ? '…' : v) : '—');
+  const figures = [
+    ['Rewards pool', `${compact(pool.left)} ${sym}`, pool.active ? `Paid out over ${pool.daysLeft} more days` : 'Fills with every mint and royalty'],
+    ['Paid per day', `${compact(pool.perDay)} ${sym}`, pool.active ? `${compact(pool.perNftPerDay)} ${sym} per NFT` : null],
+    ['Accrued today', `${compact(pool.accruedToday)} ${sym}`, 'Shared at 00:00 UTC'],
+    ['Your NFTs', mine(ids.length.toLocaleString('en-US')), `of ${Number(c.totalMinted || 0).toLocaleString('en-US')} minted`],
+    ['You can claim', mine(claimable == null ? '—' : `${formatAmount(claimable, r.decimals ?? 18, { maxDecimals: 6 })} ${sym}`), null],
+  ];
+  return (
+    <>
+      <div className="pl-launch-nft-head">
+        <TokenLogo token={{ symbol: c.symbol, name: c.name, contractURI: c.contractURI }} size={44} />
+        <div className="pl-launch-nft-title">
+          <Link className="pl-launch-strong pl-launch-nft-name" to={collectionPath(c.address)}>
+            {c.name || 'Collection'}
+          </Link>
+          <span className="pl-launch-inline start">
+            <Badge tone={st.tone}>{st.label}</Badge>
+            {c.official && (
+              <Badge tone="accent">
+                <BadgeCheck size={11} /> Official
+              </Badge>
+            )}
+            <span className="pl-launch-muted pl-launch-small">{c.kind === 'edition' ? 'Edition' : 'Unique'}</span>
+          </span>
+        </div>
+        <Button as={Link} to={collectionPath(c.address)} variant="ghost" size="sm">
+          Open collection
           <ArrowUpRight size={15} />
         </Button>
       </div>
-    </div>
+      <p className="pl-launch-section-desc">
+        Rewards for holders of this NFT collection. Every mint and royalty adds {sym} to a {POOL_DAYS}-day pool; each day at 00:00 UTC the day&apos;s part is shared equally by every NFT.
+      </p>
+      <dl className="pl-launch-plain-grid pl-launch-nft-figures">
+        {figures.map(([label, v, sub]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd className="mono">{v}</dd>
+            {sub && <dd className="pl-launch-nft-sub">{sub}</dd>}
+          </div>
+        ))}
+      </dl>
+      <p className="pl-launch-next-payout">
+        Next epoch in <span className="mono pl-launch-strong">{untilMidnight(now)}</span> <span className="pl-launch-muted">at 00:00 UTC</span>
+      </p>
+      <div className="pl-launch-tab-actions">
+        {address ? (
+          <TxButton
+            tx={tx}
+            disabled={!claimable || claimable === 0n || !claimIds.length}
+            busyLabel="Claiming on Base..."
+            onClick={() => tx.send({ label: 'Claim NFT holder rewards', to: c.address, abi: NFT_COLLECTION_ABI, functionName: 'claim', args: [claimIds] })}
+          >
+            Claim rewards
+          </TxButton>
+        ) : (
+          <ConnectButton>Connect wallet</ConnectButton>
+        )}
+        <Button as={Link} to="/launch/nft" variant="ghost">
+          <ImageIcon size={15} />
+          Launch NFT
+        </Button>
+      </div>
+      <TxResult tx={tx} success="Rewards claimed" />
+    </>
   );
 }
 
@@ -207,7 +309,7 @@ export function CampaignsTab({ data, campaigns }) {
   const t = data.token;
   return (
     <div className="pl-launch-tab-body">
-      <CardGrid items={campaigns.items} />
+      {campaigns.items.length ? <CardGrid items={campaigns.items} /> : <EmptyState icon={<Coins size={28} />} title="No campaigns yet" description="Campaigns funded by the Community Pool, the creator or anyone else show up here." />}
       <HubLinks create={`/create?token=${t.address}`} createLabel="Create campaign" hub={`/hub?token=${t.address}`} />
     </div>
   );

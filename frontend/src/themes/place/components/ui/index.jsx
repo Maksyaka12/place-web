@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Button component
@@ -203,5 +204,82 @@ export function EmptyState({ icon, title, description, action, className = '', s
       {description && <div className="empty-state-desc">{description}</div>}
       {action && <div style={{ marginTop: '16px' }}>{action}</div>}
     </div>
+  );
+}
+
+/**
+ * InfoTip: a small ⓘ that shows a short explanation on hover, focus or tap. The bubble renders into
+ * document.body with a fixed position kept inside the viewport, so a scrolling or clipped card never cuts it.
+ */
+export function InfoTip({ text, label = 'More info', size = 13, className = '' }) {
+  const btn = React.useRef(null);
+  const tip = React.useRef(null);
+  const id = React.useId();
+  const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState(null);
+  React.useLayoutEffect(() => {
+    if (!open || !btn.current || !tip.current) return;
+    const b = btn.current.getBoundingClientRect();
+    const t = tip.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = Math.min(Math.max(8, b.left + b.width / 2 - t.width / 2), vw - t.width - 8);
+    const below = b.bottom + 8;
+    const top = below + t.height > vh - 8 ? Math.max(8, b.top - t.height - 8) : below;
+    setPos({ left, top });
+  }, [open, text]);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && btn.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', close);
+    window.addEventListener('pointerdown', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', close);
+      window.removeEventListener('pointerdown', close);
+    };
+  }, [open]);
+  const show = () => setOpen(true);
+  const hide = () => {
+    setOpen(false);
+    setPos(null);
+  };
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className={`info-tip ${className}`.trim()}
+        aria-label={label}
+        aria-describedby={open ? id : undefined}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+      >
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
+        </svg>
+      </button>
+      {open &&
+        createPortal(
+          <span ref={tip} id={id} role="tooltip" className="info-tip-bubble" style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}>
+            {text}
+          </span>,
+          document.body
+        )}
+    </>
   );
 }
