@@ -3,9 +3,10 @@
 // TICKER", "NFT holders pool · SYMBOL", "Campaign", "Campaign · Community Pool", "Staking vault"), the amount to
 // claim and Claim. Sources: staking vaults the wallet is in (PlaceStaking; a link opens the vault), daily rewards of
 // the distributor (Claim all: one claimMany per rewards contract), the 30-day holders pools of NFT collections
-// (claim(ids)) and one-off snapshot campaigns of PlaceHub (claimFor). Their claim history is folded at the bottom.
+// (claim(ids), one per collection, also in Claim all) and one-off snapshot campaigns of PlaceHub (claimFor). Their claim history is folded at the bottom.
 // Logic in ../profileRewards.js.
 import { useMemo } from 'react';
+import { encodeFunctionData } from 'viem';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, BarChart3, ChevronDown, Coins, ExternalLink, Gift, History, Image as ImageIcon, Layers } from 'lucide-react';
 import { Badge, Button } from '../../themes/place/components/ui';
@@ -229,8 +230,17 @@ export function ProfileRewards({ address }) {
   const collectionOf = new Map([...(nfts.data?.owned || []).map((o) => o.collection), ...(nfts.data?.created || [])].map((c) => [c.address, c]));
   const claimMany = rewards.data?.claimMany || [];
   const campaignTxs = claims.data?.transactions || [];
-  const allTxs = [...claimMany.map((c) => ({ to: c.to, data: c.data, value: 0n })), ...campaignTxs.map((t) => ({ to: t.to, data: t.data, value: t.value }))];
-  const dueCount = groups.holders.length + groups.traders.length + groups.nft.streams.length + campaigns.length;
+  // NFT holders pools: one claim(ids) per collection, with the NFTs that have something to claim.
+  const poolTxs = groups.nft.pools
+    .map((item) => ({ to: item.collection, ids: item.ids.filter((x) => x.claimable == null || BigInt(x.claimable) > 0n).map((x) => BigInt(x.id)) }))
+    .filter((p) => p.ids.length)
+    .map((p) => ({ to: p.to, data: encodeFunctionData({ abi: NFT_COLLECTION_ABI, functionName: 'claim', args: [p.ids] }), value: 0n }));
+  const allTxs = [
+    ...claimMany.map((c) => ({ to: c.to, data: c.data, value: 0n })),
+    ...poolTxs,
+    ...campaignTxs.map((t) => ({ to: t.to, data: t.data, value: t.value })),
+  ];
+  const dueCount = groups.holders.length + groups.traders.length + groups.nft.streams.length + poolTxs.length + campaigns.length;
   const history = [...(claims.data?.claimed || []).map((c) => ({ c, kind: 'claimed' })), ...(claims.data?.expired || []).map((c) => ({ c, kind: 'expired' }))];
   const setFilter = (v) => {
     const next = new URLSearchParams(params);
@@ -269,7 +279,7 @@ export function ProfileRewards({ address }) {
           {dueCount ? `Claim all (${dueCount})` : 'Claim all'}
         </TxButton>
       </div>
-      <TxResult tx={allTx} success="All daily and campaign rewards claimed" />
+      <TxResult tx={allTx} success="All daily, NFT holder and campaign rewards claimed" />
 
       <div className="pl-launch-tabs-scroll">
         <div className="seg soft pl-rewards-types" role="tablist" aria-label="Type of reward">
