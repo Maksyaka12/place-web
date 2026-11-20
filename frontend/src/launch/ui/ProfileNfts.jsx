@@ -1,51 +1,17 @@
 // Profile → NFT launches (/profile/nft-launches): the collections this wallet launched, each with the token it is
-// paired with, then the NFTs it holds and its past holder claims. `NftClaimRow` (claim(ids) of one collection's
-// holders pool) is also used by Profile → Rewards, NFT holders.
+// paired with, then the NFTs it holds and its past holder claims.
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, Gift, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, SectionTitle } from '../../themes/place/components/ui';
-import { TxButton, TxResult, QueryError, Skeleton, AddressLink } from '../../themes/place/pages/place/parts';
-import { usePlaceTx } from '../../place/hooks';
+import { QueryError, Skeleton, AddressLink } from '../../themes/place/pages/place/parts';
 import { explorerTx } from '../../place/chain';
 import { formatAmount, formatUtc } from '../../place/format';
 import { useNftAccount } from '../hooks.js';
-import { NFT_COLLECTION_ABI } from '../nftAbi.js';
 import { MINT_STATUS, collectionPath } from '../nft.js';
 import { TokenLogo, launchTokenPath } from './parts.jsx';
 import { NftImage, NftNotLive, ethText } from './CollectionParts.jsx';
 
 const amount = (raw, decimals = 18) => formatAmount(BigInt(raw || 0), Number(decimals ?? 18), { maxDecimals: 6 });
-
-export function NftClaimRow({ c, item }) {
-  const tx = usePlaceTx();
-  const ids = item.ids.filter((x) => x.claimable == null || BigInt(x.claimable) > 0n).map((x) => BigInt(x.id));
-  const r = item.rewardToken || c?.rewardToken;
-  return (
-    <div className="pl-launch-reward-row">
-      <Link to={collectionPath(item.collection)} className="pl-launch-reward-token">
-        <TokenLogo token={{ symbol: c?.symbol, name: c?.name, contractURI: c?.contractURI }} size={36} />
-        <span className="pl-launch-launch-title">
-          <span className="pl-launch-strong">{c?.name || 'Collection'}</span>
-          <span className="pl-launch-muted pl-launch-small pl-launch-inline start">
-            <ImageIcon size={12} /> Holders pool · {item.ids.length} NFT{item.ids.length === 1 ? '' : 's'}
-            {item.credit && BigInt(item.credit) > 0n ? ' · with what sold NFTs earned' : ''}
-          </span>
-        </span>
-      </Link>
-      <span className="pl-launch-reward-amounts">
-        <span className="mono pl-launch-strong">{item.claimable == null ? '—' : `${amount(item.claimable, r?.decimals)} ${r?.symbol || ''}`}</span>
-      </span>
-      <TxButton tx={tx} size="sm" onClick={() => tx.send({ label: 'Claim', to: item.collection, abi: NFT_COLLECTION_ABI, functionName: 'claim', args: [ids] })} busyLabel="Claiming...">
-        Claim
-      </TxButton>
-      {tx.status !== 'idle' && (
-        <div className="pl-launch-reward-result">
-          <TxResult tx={tx} success="Claimed" />
-        </div>
-      )}
-    </div>
-  );
-}
 
 /** One collection the wallet launched: status, mint progress and the token it is paired with. */
 function CollectionRow({ c }) {

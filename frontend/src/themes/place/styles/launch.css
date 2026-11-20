@@ -3648,6 +3648,67 @@
   }
 }
 
+/* Profile → Fees and Rewards: one plain list of rows, no card around it */
+.pl-fee-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pl-fee-claim-all {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.pl-launch-reward-list.pl-fee-list {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.pl-fee-list .pl-launch-reward-row {
+  padding: 16px 0;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 16px;
+}
+.pl-fee-list .pl-launch-reward-row:first-child {
+  border-top: 1px solid var(--border);
+}
+.pl-fee-list .pl-launch-reward-row:last-child {
+  border-bottom: 1px solid var(--border);
+}
+.pl-fee-list .pl-launch-reward-amounts {
+  align-items: flex-end;
+}
+.pl-fee-list .pl-launch-reward-token .badge {
+  flex-shrink: 0;
+}
+.pl-fee-manage-list {
+  margin-top: 8px;
+}
+.pl-fee-manage > summary {
+  gap: 10px;
+}
+.pl-fee-manage-name {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text);
+}
+@media (max-width: 640px) {
+  .pl-fee-list .pl-launch-reward-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .pl-fee-list .pl-launch-reward-amounts {
+    align-items: flex-start;
+  }
+  .pl-fee-claim-all {
+    align-items: stretch;
+  }
+}
+
 /* Token page, Staking tab: vault cards in the narrower main column */
 .pl-launch-staking-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));

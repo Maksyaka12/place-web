@@ -488,23 +488,18 @@ the same components and tokens as the hub; only these pieces are its own:
   while there are none). **NFT launches** (`ProfileNfts.jsx`): one `.pl-launch-reward-row` per collection it launched
   (logo, mint status, Unique / Edition, "Paired with TOKEN" linking to the token page, minted / supply and price), then
   NFTs you hold and the claim history. **Rewards** (`ProfileRewards.jsx`, logic in `src/launch/profileRewards.js`):
-  Claim all in the head (one claimMany per rewards contract), the hub's type tabs (`.pl-rewards-types`: All · Staking ·
-  Holders · Traders · NFT holders with counts; `?type=`), then groups of `.pl-launch-reward-row` rows: Staking (every
-  vault the wallet is in, always, live first: pair logos, status and the end date in UTC, Earned and Staked in mono,
-  Claim and Withdraw apart, "Unlocks …" while every lot is locked; on phones the two buttons share a full-width row),
-  Holders, Traders and NFT holders (only what can be claimed now: distributor streams with Claim, and for NFT holders
-  also the 30-day pools of collections, `claim(ids)`), then Campaign rewards (`pages/place/RewardsPage.jsx` with
-  `only` and `quiet`: one-off payouts of snapshot campaigns, filtered by kind; hidden when there is nothing).
-  Phones put the amounts on their own line. **Fees**: 0.3.0 tokens get `VaultPanelV3.jsx` — the allocation
-  bar and three blocks: Creator revenue (Claim), Community Pool (Create campaign opens `.pl-launch-fund-form`: holder
-  rewards, trader rewards or staking, amount, reward token, start, minimum, days, slippage, the quote and the ready
-  transaction from `launch/fund-quote`; a 0.3.1 pool adds the NFT holders tab — collection select with the eligible
-  official ones first and the rest disabled with the reason, share of the pool in % with 5/10/25% presets up to the
-  25% cap, reward token, start, days, minimum NFTs, an amber alert during the 30-day cooldown — and Buyback & burn —
-  share with 10/25/50/100% presets, slippage, tokens burned and burned so far; tabs show only when the pool supports
-  them), Automatic campaign (date; Start it now when due), then the Pool log (`.pl-launch-pool-log`, last entries as
-  `.pl-place-row` links to Basescan, amounts in mono). 0.2.0 tokens keep
-  `VaultPanel.jsx` (your fees, burn with Run process(), community fund, raising shares); 0.1.0 the two-block card.
+  Claim all in the head (every claimMany of the distributor and the snapshot campaign claims, one after another), the
+  hub's type tabs (`.pl-rewards-types`: All · Staking · Holders · Traders · NFT holders with counts; `?type=`), then one
+  plain list of rows (`.pl-launch-reward-list.pl-fee-list`, no card): logo, name, a source badge under it ("Token
+  economy · TICKER", "NFT holders pool · SYMBOL", "Campaign", "Campaign · Community Pool", "Staking vault"), the amount
+  to claim in mono and Claim (staking adds a Vault link; withdrawing lives on the vault page). No empty card: one muted
+  line with Find rewards. Claimed and expired campaigns fold into "Campaign history" at the bottom. **Fees** (`ProfileFees.jsx`): the title with ⓘ and an All / Crypto / Stocks `.seg.soft`, one sentence, Claim all
+  (every claim of the filtered list), then one plain row per payout asset (`.pl-fee-list`): the asset logo and ticker,
+  "From TOKEN, TOKEN" or "Legacy fees" (vaults before 0.3.0 claim apart), "Available" with the amount and "Approx. $…",
+  Claim (one claim per token vault). Under it "Manage tokens": one folded `.pl-launch-advanced` per token with what
+  is not a claim — 0.3.0: `VaultPanelV3` with `hideClaim` (payout wallet, allocation bar, Community Pool with Create
+  campaign and its `.pl-launch-fund-form` tabs: holder / trader rewards, staking, NFT holders, Buyback & burn, the
+  automatic campaign, the Pool log); 0.2.0 `VaultPanel.jsx`; 0.1.0 the buyback slippage and the two-block card.
 - **Rewards hub** (`/hub`, `HubPage.jsx`, shared pieces in `vaults.jsx`, styles in `styles/rewards.css` plus the
   `.pl-vaults-*` / `.pl-vault-*` / `.pl-filter-*` classes of `launch.css`): every reward on Place in the vault look. The
   head: the title with its description on one line, Launch NFT and Create vault / campaign (primary) on the right; four
@@ -523,13 +518,22 @@ the same components and tokens as the hub; only these pieces are its own:
   (`.pl-rewards-row`, 7 columns, scrolls sideways inside its card) shows the same with the source under the name. A
   staking card opens `/staking?program=` (the vault page: stake form, position, claim, withdraw; `/staking` alone opens
   the Staking tab), a snapshot card its campaign page, a stream `/hub?stream=`.
-- **Stream page** (`HubStreamDetail.jsx`): back link "All rewards", the vault head (40 px logos, 28 px title, ID, status,
-  source and Place badges), an amber alert when Place does not build tables for the stream, 4 tiles (Per day, Pool,
-  Shared so far, Next day closes in or Starts in; 15 px values on phones), the rule with "You can claim" and Claim beside
-  a facts card (token, days in UTC, funded by, reward, contract); under Claim a live stream says "Rewards for today will
-  be ready after 00:00 UTC" (`ReadyNote`). Then Unshared budget (Return to funder 30 days after the last day), the
-  folded Advanced block with Close the day (Place closes days on its own) and the days table (`.pl-rewards-days-grid`:
-  day, shared, wallets, table status with the IPFS link).
+- **Open reward: staking vault and stream** (`StakingPage.jsx`, `HubStreamDetail.jsx`; layout in `VaultDetail.jsx`,
+  `.pl-vd-*` in `styles/rewards.css`), after a trading terminal's vault page. Full width: back link, the head (48 px
+  pair logos, 32 px "Stake / Hold / Trade X · Earn Y" or "Hold X NFT · Earn Y", status, source badge, ID with copy) and
+  a metrics row (`.pl-vd-metrics`, 13 px labels, 22 px mono values, sub in 12 px; 2 columns on phones). Staking: Live
+  APR (ⓘ), TVL, Total staked, Total rewards, Total rewards / epoch, Epoch rounds N / M, Epoch length, Early withdraw
+  (amber "Allowed · X% penalty" or red Forbidden). Streams: Per day (Last day for Economy), Pool (Funded so far), Paid
+  out, Epoch rounds, Epoch length 1 day, Condition (16 px, ⓘ with the long rule), Eligible yesterday. Then two columns
+  (one below 1180 px): the main one has two asset cards (`.pl-vd-card`: Staking / Holding / Trading token or
+  Collection, Reward currency; address with copy; a total under a line), Schedule (`.pl-vd-schedule`: dots placed by
+  time on a 2 px line filled up to now, Deposits open · Starts · Ends in UTC, "No end" for Economy streams), Details
+  (`.pl-vd-details`, 2 columns) and one amber rule line (`.pl-vd-rule`); streams add the Days table (day, budget,
+  eligible, table status with IPFS) and the folded Advanced (Close the day, Return to funder). The side column is a
+  sticky 400 px card (`.pl-vd-panel`): staking "My deposit" (Total staked, Claimable, Claimed, Unlocked; lots three per
+  page; Stake / Withdraw / Claim as a full-width `.seg`; the amount box `.pl-vd-amount` with Balance, MAX and the USD
+  estimate, Earn and Lock, a large button); streams "My position" (today's balance, volume or NFTs and Eligible /
+  Not eligible, Claimable, Claimed, Claim, ReadyNote). Nothing is shown that the API does not return.
 - **Create vault / campaign** (`/create`, `HubCreatePage.jsx`, logic in `src/launch/hubCreate.js`): one form for the
   four types, in the launch-form layout (numbered steps, a sticky right column, under the form below 1180 px). On top
   the type tabs (`.pl-rewards-types` as a radio group: Staking · Holders · Traders · NFT holders) and one sentence on

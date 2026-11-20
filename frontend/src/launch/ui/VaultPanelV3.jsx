@@ -461,7 +461,7 @@ function StreamForm({ t, pool, econ, onDone, kind }) {
   );
 }
 
-export function VaultPanelV3({ item, PayoutForm }) {
+export function VaultPanelV3({ item, PayoutForm, hideClaim = false }) {
   const t = item.token;
   const v = item.vault;
   const q = t.quote;
@@ -473,6 +473,66 @@ export function VaultPanelV3({ item, PayoutForm }) {
   const pool = v.community;
   const paid = v.claim?.error || !v.claim ? 0n : BigInt(v.claim.paid || 0);
   const now = Date.now();
+  const poolBlock = (
+    <div className="pl-launch-fee-block">
+      <span className="pl-launch-fee-label">
+        <Users size={14} /> Community Pool
+      </span>
+      {!pool ? (
+        <span className="pl-launch-fee-sub">This token has no community pool share.</span>
+      ) : pool.error ? (
+        <span className="pl-place-hint error">{pool.error}</span>
+      ) : (
+        <>
+          <span className="pl-launch-fee-value mono">{fmtQ(pool.afterCollect)}</span>
+          <span className="pl-launch-fee-sub">
+            {BigInt(pool.pendingFees || 0) > 0n ? `Includes ${fmtQ(pool.pendingFees)} collected with the next spend. ` : ''}{pool.actions?.supported ? `Nobody can withdraw it: it funds rewards and staking for ${t.symbol} and its NFT holders, or buys back and burns ${t.symbol}.` : `It can only fund rewards and staking for ${t.symbol}.`}
+          </span>
+          <Button size="sm" variant={open ? 'primary' : 'secondary'} disabled={BigInt(pool.afterCollect || 0) === 0n} onClick={() => setOpen(!open)}>
+            Create campaign
+          </Button>
+        </>
+      )}
+    </div>
+  );
+  const autoBlock = (
+    <div className="pl-launch-fee-block">
+      <span className="pl-launch-fee-label">
+        <Timer size={14} /> Automatic campaign
+      </span>
+      {pool && !pool.error ? (
+        <>
+          <span className="pl-launch-fee-value">{new Date(pool.defaultCampaign.nextAt).getTime() > now ? formatUtc(pool.defaultCampaign.nextAt) : 'Due now'}</span>
+          <span className="pl-launch-fee-sub">
+            If the pool is not used before then, anyone can turn all of it into a {pool.settings.defaultCampaignEpochs}-day holder rewards stream.
+          </span>
+          {pool.defaultCampaign.canStart && (
+            <TxButton tx={defaultTx} size="sm" variant="ghost" busyLabel="Starting on Base..." onClick={() => defaultTx.send({ label: 'Start automatic campaign', to: pool.defaultCampaign.tx.to, data: pool.defaultCampaign.tx.data, value: 0n })}>
+              Start it now
+            </TxButton>
+          )}
+          <TxResult tx={defaultTx} success="Holder rewards stream started" />
+        </>
+      ) : (
+        <span className="pl-launch-fee-sub">Only for tokens with a community pool.</span>
+      )}
+    </div>
+  );
+  if (hideClaim) {
+    // Profile → Fees → Manage tokens: the claim lives in the fee list above, so only the pool and the payout.
+    return (
+      <div className="pl-place-stack">
+        {!v.error && v.payout && <PayoutForm vault={v.address} current={v.payout} />}
+        {econ && <AllocationBar shares={econ.shares} />}
+        <div className="pl-launch-fee-grid">
+          {poolBlock}
+          {autoBlock}
+        </div>
+        {open && pool && !pool.error && <PoolForm t={t} pool={pool} econ={econ} onDone={() => setOpen(false)} />}
+        {pool && !pool.error && <PoolLog t={t} pool={pool} />}
+      </div>
+    );
+  }
   return (
     <Card className="pl-launch-fee">
       <div className="pl-launch-fee-head">
@@ -513,48 +573,8 @@ export function VaultPanelV3({ item, PayoutForm }) {
           <TxResult tx={claimTx} success="Claimed" />
         </div>
 
-        <div className="pl-launch-fee-block">
-          <span className="pl-launch-fee-label">
-            <Users size={14} /> Community Pool
-          </span>
-          {!pool ? (
-            <span className="pl-launch-fee-sub">This token has no community pool share.</span>
-          ) : pool.error ? (
-            <span className="pl-place-hint error">{pool.error}</span>
-          ) : (
-            <>
-              <span className="pl-launch-fee-value mono">{fmtQ(pool.afterCollect)}</span>
-              <span className="pl-launch-fee-sub">
-                {BigInt(pool.pendingFees || 0) > 0n ? `Includes ${fmtQ(pool.pendingFees)} collected with the next spend. ` : ''}{pool.actions?.supported ? `Nobody can withdraw it: it funds rewards and staking for ${t.symbol} and its NFT holders, or buys back and burns ${t.symbol}.` : `It can only fund rewards and staking for ${t.symbol}.`}
-              </span>
-              <Button size="sm" variant={open ? 'primary' : 'secondary'} disabled={BigInt(pool.afterCollect || 0) === 0n} onClick={() => setOpen(!open)}>
-                Create campaign
-              </Button>
-            </>
-          )}
-        </div>
-
-        <div className="pl-launch-fee-block">
-          <span className="pl-launch-fee-label">
-            <Timer size={14} /> Automatic campaign
-          </span>
-          {pool && !pool.error ? (
-            <>
-              <span className="pl-launch-fee-value">{new Date(pool.defaultCampaign.nextAt).getTime() > now ? formatUtc(pool.defaultCampaign.nextAt) : 'Due now'}</span>
-              <span className="pl-launch-fee-sub">
-                If the pool is not used before then, anyone can turn all of it into a {pool.settings.defaultCampaignEpochs}-day holder rewards stream.
-              </span>
-              {pool.defaultCampaign.canStart && (
-                <TxButton tx={defaultTx} size="sm" variant="ghost" busyLabel="Starting on Base..." onClick={() => defaultTx.send({ label: 'Start automatic campaign', to: pool.defaultCampaign.tx.to, data: pool.defaultCampaign.tx.data, value: 0n })}>
-                  Start it now
-                </TxButton>
-              )}
-              <TxResult tx={defaultTx} success="Holder rewards stream started" />
-            </>
-          ) : (
-            <span className="pl-launch-fee-sub">Only for tokens with a community pool.</span>
-          )}
-        </div>
+        {poolBlock}
+        {autoBlock}
       </div>
 
       {open && pool && !pool.error && <PoolForm t={t} pool={pool} econ={econ} onDone={() => setOpen(false)} />}

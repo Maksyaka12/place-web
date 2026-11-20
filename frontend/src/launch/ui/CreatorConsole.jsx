@@ -10,8 +10,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useWallets } from '@privy-io/react-auth';
 import { connectedWallet } from '../../config/walletTx';
 import { toHex, isAddress } from 'viem';
-import { ArrowLeft, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock, Image as ImageIcon } from 'lucide-react';
-import { Button, Card, Badge, EmptyState, Alert } from '../../themes/place/components/ui';
+import { ArrowLeft, ImagePlus, Save, Loader2, Wallet, Search, ArrowUpRight, Rocket, Coins, UserRound, Flame, Gift, CheckCircle2, AlertTriangle, Clock, Image as ImageIcon, ChevronDown } from 'lucide-react';
+import { Button, Card, Badge, EmptyState, Alert, InfoTip } from '../../themes/place/components/ui';
 import { TxButton, TxResult, ConnectButton, CopyAddress, QueryError, Skeleton } from '../../themes/place/pages/place/parts';
 import { usePlaceAccount, usePlaceTx, useNow } from '../../place/hooks';
 import { explorerAddress } from '../../place/chain';
@@ -27,6 +27,7 @@ import { VaultPanel } from './VaultPanel.jsx';
 import { VaultPanelV3 } from './VaultPanelV3.jsx';
 import { ProfileRewards } from './ProfileRewards.jsx';
 import { ProfileNfts } from './ProfileNfts.jsx';
+import { FEE_FILTERS, FeeList, useFeeList } from './ProfileFees.jsx';
 import MyCampaigns from '../../themes/place/pages/place/MyCampaignsPage.jsx';
 import { LEGACY_SECTIONS } from '../profileRewards.js';
 import { money } from './TokenCard.jsx';
@@ -453,61 +454,106 @@ function FeeRow({ item }) {
   );
 }
 
+/** One launched token under "Manage tokens": its Community Pool, payout wallet and release tools, folded. */
+function ManageToken({ item, slippage, setSlippage }) {
+  const t = item.token;
+  const v = item.vault;
+  return (
+    <details className="pl-launch-advanced pl-fee-manage">
+      <summary>
+        <TokenLogo token={t} size={22} />
+        <span className="pl-fee-manage-name">
+          {t.symbol} <span className="pl-launch-muted">{v.version === 'v3' ? 'Community Pool and payout' : `${t.version || 'Legacy'} vault`}</span>
+        </span>
+        <ChevronDown size={14} className="pl-launch-advanced-chevron" />
+      </summary>
+      <div className="pl-launch-advanced-body">
+        {v.version === 'legacy' ? (
+          <>
+            <div className="pl-launch-slippage">
+              <span className="pl-launch-field-label">Buyback slippage</span>
+              <div className="seg soft">
+                {[100, 300, 500].map((s) => (
+                  <button key={s} type="button" aria-selected={slippage === s} onClick={() => setSlippage(s)}>
+                    {s / 100}%
+                  </button>
+                ))}
+              </div>
+            </div>
+            <FeeRow item={item} />
+          </>
+        ) : v.version === 'v3' ? (
+          <VaultPanelV3 item={item} PayoutForm={PayoutForm} hideClaim />
+        ) : (
+          <VaultPanel item={item} PayoutForm={PayoutForm} />
+        )}
+      </div>
+    </details>
+  );
+}
+
 function Fees({ address }) {
   const [slippage, setSlippage] = useState(300);
-  const { data, isLoading, error, refetch, isFetching } = useCreator(address, slippage);
+  const [filter, setFilter] = useState('all');
+  const { data, isLoading, error, refetch } = useCreator(address, slippage);
   const mine = (data?.tokens || []).filter((x) => x.vault);
-  const anyLegacy = mine.some((x) => x.vault.version === 'legacy');
   const former = (data?.tokens || []).filter((x) => !x.vault);
+  const { rows, txs } = useFeeList(mine, filter);
+  const allTx = usePlaceTx();
   return (
     <div className="pl-launch-console-section">
-      <div className="pl-launch-console-head row">
-        <div>
-          <h2 className="pl-launch-console-title">Fees</h2>
-          <p className="pl-launch-section-desc">
-            Your share of every trade waits in each token&apos;s vault. Claim it here, and turn the Community Pool into rewards for your holders and traders.
-          </p>
+      <div className="pl-fee-head">
+        <h2 className="pl-launch-console-title pl-launch-inline">
+          Fees <InfoTip text="Your share of every trade on tokens you launched. It waits in each token's vault until you claim it, in the token's pair asset." />
+        </h2>
+        <div className="seg soft" role="tablist" aria-label="Payout asset">
+          {FEE_FILTERS.map(([v, label]) => (
+            <button key={v} type="button" role="tab" aria-selected={filter === v} onClick={() => setFilter(v)}>
+              {label}
+            </button>
+          ))}
         </div>
-        {anyLegacy && <div className="pl-launch-slippage">
-          <span className="pl-launch-field-label">Buyback slippage, 0.1.0 tokens {isFetching && <Loader2 size={12} className="spin" />}</span>
-          <div className="seg soft">
-            {[100, 300, 500].map((s) => (
-              <button key={s} type="button" aria-selected={slippage === s} onClick={() => setSlippage(s)}>
-                {s / 100}%
-              </button>
-            ))}
-          </div>
-        </div>}
       </div>
+      <p className="pl-launch-section-desc">Claim your trading fees here. Fees of several tokens are combined by payout asset.</p>
       {error ? (
         <QueryError error={error} retry={refetch} />
       ) : isLoading ? (
-        <Skeleton height={220} count={2} />
-      ) : mine.length ? (
-        <div className="pl-launch-fees">
-          {mine.map((item) =>
-            item.vault.version === 'legacy' ? (
-              <FeeRow key={item.token.address} item={item} />
-            ) : item.vault.version === 'v3' ? (
-              <VaultPanelV3 key={item.token.address} item={item} PayoutForm={PayoutForm} />
-            ) : (
-              <VaultPanel key={item.token.address} item={item} PayoutForm={PayoutForm} />
-            )
-          )}
-        </div>
+        <Skeleton height={72} count={3} />
       ) : (
-        <Card className="pl-place-empty-card">
-          <EmptyState
-            icon={<Coins size={28} />}
-            title="No fees to claim"
-            description="Fees build up from trades on tokens you launched. Launch one and its earnings show up here."
-            action={
-              <Button as={Link} to={launchNewPath()} variant="primary">
-                Launch token
-              </Button>
-            }
-          />
-        </Card>
+        <>
+          {txs.length > 0 && (
+            <div className="pl-fee-claim-all">
+              <TxButton tx={allTx} busyLabel="Claiming on Base..." onClick={() => allTx.send(txs.map((x, i) => ({ ...x, label: txs.length > 1 ? `Claim all (${i + 1} of ${txs.length})` : x.label })))}>
+                Claim all
+              </TxButton>
+              <TxResult tx={allTx} success="All fees claimed" />
+            </div>
+          )}
+          {rows.length ? (
+            <FeeList rows={rows} />
+          ) : (
+            <EmptyState
+              icon={<Coins size={28} />}
+              title="No fees to claim"
+              description={mine.length ? 'Fees build up with every trade on your tokens and show up here.' : 'Launch a token and your share of its trades shows up here.'}
+              action={
+                mine.length ? null : (
+                  <Button as={Link} to={launchNewPath()} variant="primary">
+                    Launch token
+                  </Button>
+                )
+              }
+            />
+          )}
+          {mine.length > 0 && (
+            <div className="pl-place-stack pl-fee-manage-list">
+              <span className="pl-launch-section-title">Manage tokens</span>
+              {mine.map((item) => (
+                <ManageToken key={item.token.address} item={item} slippage={slippage} setSlippage={setSlippage} />
+              ))}
+            </div>
+          )}
+        </>
       )}
       {former.length > 0 && <p className="pl-place-hint">{former.length} token(s) you launched now belong to another creator, so their fees go to them.</p>}
     </div>
